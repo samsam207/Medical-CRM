@@ -1,0 +1,8 @@
+export { appointmentsApi } from './appointments'
+export { visitsApi } from './visits'
+export { patientsApi } from './patients'
+export { paymentsApi } from './payments'
+export { dashboardApi } from './dashboard'
+export { clinicsApi } from './clinics'
+export { reportsApi } from './reports'
+export { queueApi } from './queue'

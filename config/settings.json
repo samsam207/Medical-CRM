@@ -1,0 +1,24 @@
+{
+  "app": {
+    "name": "Medical CRM",
+    "version": "1.0.0",
+    "description": "Comprehensive clinic management system"
+  },
+  "backend": {
+    "host": "0.0.0.0",
+    "port": 5000,
+    "debug": true,
+    "database_url": "sqlite:///instance/medical_crm.db"
+  },
+  "frontend": {
+    "host": "localhost",
+    "port": 3000,
+    "api_url": "http://localhost:5000"
+  },
+  "features": {
+    "websocket": true,
+    "caching": true,
+    "notifications": true,
+    "file_uploads": true
+  }
+}
