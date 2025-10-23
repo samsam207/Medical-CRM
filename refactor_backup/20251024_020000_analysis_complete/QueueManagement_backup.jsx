@@ -6,13 +6,11 @@ import { Card, CardHeader, CardTitle, CardContent } from './common/Card'
 import Button from './common/Button'
 import Badge from './common/Badge'
 import { Clock, User, Phone, Stethoscope, CheckCircle, AlertCircle, Play, Pause, SkipForward } from 'lucide-react'
-import { useAuthStore } from '../stores/authStore'
 
 const QueueManagement = ({ clinicId, onQueueUpdate }) => {
   const [selectedAppointment, setSelectedAppointment] = useState(null)
   const [showCheckinModal, setShowCheckinModal] = useState(false)
   const queryClient = useQueryClient()
-  const { user } = useAuthStore()
 
   // Fetch queue data
   const { data: queueData, isLoading, error, refetch } = useQuery({
@@ -61,56 +59,6 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
 
   const handleCheckin = (appointmentId) => {
     checkinMutation.mutate(appointmentId)
-  }
-
-  // Queue action mutations
-  const callPatientMutation = useMutation({
-    mutationFn: (visitId) => queueApi.callPatient(visitId),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['queue', clinicId])
-      if (onQueueUpdate) onQueueUpdate()
-    }
-  })
-
-  const startConsultationMutation = useMutation({
-    mutationFn: (visitId) => queueApi.startConsultation(visitId),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['queue', clinicId])
-      if (onQueueUpdate) onQueueUpdate()
-    }
-  })
-
-  const completeConsultationMutation = useMutation({
-    mutationFn: ({ visitId, notes }) => queueApi.completeConsultation(visitId, notes),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['queue', clinicId])
-      if (onQueueUpdate) onQueueUpdate()
-    }
-  })
-
-  const skipPatientMutation = useMutation({
-    mutationFn: ({ visitId, reason }) => queueApi.skipPatient(visitId, reason),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['queue', clinicId])
-      if (onQueueUpdate) onQueueUpdate()
-    }
-  })
-
-  // Queue action handlers
-  const handleCallPatient = (visitId) => {
-    callPatientMutation.mutate(visitId)
-  }
-
-  const handleStartConsultation = (visitId) => {
-    startConsultationMutation.mutate(visitId)
-  }
-
-  const handleCompleteConsultation = (visitId, notes = '') => {
-    completeConsultationMutation.mutate({ visitId, notes })
-  }
-
-  const handleSkipPatient = (visitId, reason = 'No show') => {
-    skipPatientMutation.mutate({ visitId, reason })
   }
 
   const getStatusIcon = (status) => {
@@ -291,22 +239,9 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge className={getStatusColor(visit.status)}>
-                    {visit.status.replace('_', ' ')}
-                  </Badge>
-                  {user?.role === 'receptionist' && (
-                    <Button
-                      onClick={() => handleCallPatient(visit.id)}
-                      disabled={callPatientMutation.isPending}
-                      size="sm"
-                      variant="outline"
-                    >
-                      <Phone className="w-4 h-4 mr-1" />
-                      Call
-                    </Button>
-                  )}
-                </div>
+                <Badge className={getStatusColor(visit.status)}>
+                  {visit.status.replace('_', ' ')}
+                </Badge>
               </div>
             ))}
 
@@ -330,22 +265,9 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge className={getStatusColor(visit.status)}>
-                    {visit.status.replace('_', ' ')}
-                  </Badge>
-                  {user?.role === 'receptionist' && (
-                    <Button
-                      onClick={() => handleStartConsultation(visit.id)}
-                      disabled={startConsultationMutation.isPending}
-                      size="sm"
-                      variant="outline"
-                    >
-                      <Play className="w-4 h-4 mr-1" />
-                      Start
-                    </Button>
-                  )}
-                </div>
+                <Badge className={getStatusColor(visit.status)}>
+                  {visit.status.replace('_', ' ')}
+                </Badge>
               </div>
             ))}
 
@@ -369,34 +291,9 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge className={getStatusColor(visit.status)}>
-                    {visit.status.replace('_', ' ')}
-                  </Badge>
-                  {user?.role === 'receptionist' && (
-                    <div className="flex gap-1">
-                      <Button
-                        onClick={() => handleCompleteConsultation(visit.id)}
-                        disabled={completeConsultationMutation.isPending}
-                        size="sm"
-                        variant="outline"
-                      >
-                        <CheckCircle className="w-4 h-4 mr-1" />
-                        Complete
-                      </Button>
-                      <Button
-                        onClick={() => handleSkipPatient(visit.id)}
-                        disabled={skipPatientMutation.isPending}
-                        size="sm"
-                        variant="outline"
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <SkipForward className="w-4 h-4 mr-1" />
-                        Skip
-                      </Button>
-                    </div>
-                  )}
-                </div>
+                <Badge className={getStatusColor(visit.status)}>
+                  {visit.status.replace('_', ' ')}
+                </Badge>
               </div>
             ))}
 

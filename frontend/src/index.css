@@ -1,18 +1,128 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@200;300;400;500;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* RTL Support */
+html {
+  direction: rtl;
+  text-align: right;
+}
+
 /* Custom styles */
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  font-family: 'Cairo', 'Tajawal', 'Noto Sans Arabic', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-color: #E7F2EF;
+  direction: rtl;
+  text-align: right;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+  font-family: 'Cairo', 'Tajawal', 'Noto Sans Arabic', source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+/* Custom component styles */
+@layer components {
+  .btn-primary {
+    @apply bg-primary-500 hover:bg-primary-600 text-white font-medium py-3 px-6 rounded-2xl transition-all duration-300 shadow-md hover:shadow-lg;
+  }
+  
+  .btn-secondary {
+    @apply bg-secondary-500 hover:bg-secondary-600 text-white font-medium py-3 px-6 rounded-2xl transition-all duration-300 shadow-md hover:shadow-lg;
+  }
+  
+  .btn-accent {
+    @apply bg-accent-500 hover:bg-accent-600 text-white font-medium py-3 px-6 rounded-2xl transition-all duration-300 shadow-md hover:shadow-lg;
+  }
+  
+  .btn-outline {
+    @apply border-2 border-primary-500 text-primary-500 hover:bg-primary-500 hover:text-white font-medium py-3 px-6 rounded-2xl transition-all duration-300 shadow-md hover:shadow-lg;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-3 border-2 border-gray-200 rounded-2xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition-all duration-300 bg-white shadow-md;
+  }
+  
+  .card-modern {
+    @apply bg-white rounded-3xl shadow-md hover:shadow-lg transition-all duration-300 border border-gray-100;
+  }
+  
+  .card-header-modern {
+    @apply px-8 py-6 border-b border-gray-100;
+  }
+  
+  .card-content-modern {
+    @apply px-8 py-6;
+  }
+  
+  .text-primary {
+    @apply text-primary-500;
+  }
+  
+  .text-secondary {
+    @apply text-secondary-500;
+  }
+  
+  .text-accent {
+    @apply text-accent-500;
+  }
+  
+  
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+  }
+  
+  .animate-slide-in {
+    animation: slideIn 0.3s ease-out;
+  }
+  
+  .animate-bounce-soft {
+    animation: bounceSoft 0.6s ease-in-out;
+  }
+}
+
+/* RTL specific adjustments */
+.rtl-flip {
+  transform: scaleX(-1);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #A1C2BD;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #708993;
+}
+
+/* Loading animation */
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { io } from 'socket.io-client'
 import { useAuthStore } from '../stores/authStore'
 
@@ -6,46 +6,114 @@ export const useSocket = () => {
   const { token, isAuthenticated } = useAuthStore()
   const socketRef = useRef(null)
   const [isConnected, setIsConnected] = useState(false)
+  const [connectionError, setConnectionError] = useState(null)
+  const reconnectTimeoutRef = useRef(null)
+  const reconnectAttemptsRef = useRef(0)
+  const maxReconnectAttempts = 5
+  const baseReconnectDelay = 1000 // 1 second
 
-  useEffect(() => {
-    if (isAuthenticated && token && !socketRef.current) {
-      // Initialize socket connection
-      socketRef.current = io('http://localhost:5000', {
-        auth: {
-          token: token
-        },
-        transports: ['websocket', 'polling']
-      })
+  const connect = useCallback(() => {
+    if (!isAuthenticated || !token || socketRef.current) return
 
-      // Connection event handlers
-      socketRef.current.on('connect', () => {
-        console.log('Socket connected')
-        setIsConnected(true)
-      })
+    console.log('Attempting socket connection...')
+    setConnectionError(null)
 
-      socketRef.current.on('disconnect', () => {
-        console.log('Socket disconnected')
-        setIsConnected(false)
-      })
+    socketRef.current = io('http://localhost:5000', {
+      auth: { token: token },
+      transports: ['websocket', 'polling'],
+      timeout: 10000,
+      forceNew: true
+    })
 
-      socketRef.current.on('error', (error) => {
-        console.error('Socket error:', error)
-        setIsConnected(false)
-      })
+    // Connection event handlers
+    socketRef.current.on('connect', () => {
+      console.log('Socket connected')
+      setIsConnected(true)
+      setConnectionError(null)
+      reconnectAttemptsRef.current = 0
+    })
 
-      socketRef.current.on('connected', (data) => {
-        console.log('Socket authenticated:', data)
-        setIsConnected(true)
-      })
+    socketRef.current.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason)
+      setIsConnected(false)
+      
+      // Only attempt reconnection if it wasn't a manual disconnect
+      if (reason !== 'io client disconnect' && reason !== 'io server disconnect') {
+        scheduleReconnect()
+      }
+    })
+
+    socketRef.current.on('connect_error', (error) => {
+      console.error('Socket connection error:', error)
+      setConnectionError(error.message || 'Connection failed')
+      setIsConnected(false)
+      scheduleReconnect()
+    })
+
+    socketRef.current.on('error', (error) => {
+      console.error('Socket error:', error)
+      setConnectionError(error.message || 'Socket error')
+      setIsConnected(false)
+    })
+
+    socketRef.current.on('connected', (data) => {
+      console.log('Socket authenticated:', data)
+      setIsConnected(true)
+      setConnectionError(null)
+    })
+  }, [isAuthenticated, token])
+
+  const scheduleReconnect = useCallback(() => {
+    if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
+      console.error('Max reconnection attempts reached')
+      setConnectionError('Unable to connect after multiple attempts')
+      return
     }
 
-    return () => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+    }
+
+    const delay = baseReconnectDelay * Math.pow(2, reconnectAttemptsRef.current)
+    console.log(`Scheduling reconnection attempt ${reconnectAttemptsRef.current + 1} in ${delay}ms`)
+    
+    reconnectTimeoutRef.current = setTimeout(() => {
+      reconnectAttemptsRef.current++
       if (socketRef.current) {
         socketRef.current.disconnect()
         socketRef.current = null
       }
+      connect()
+    }, delay)
+  }, [connect])
+
+  const disconnect = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
     }
-  }, [isAuthenticated, token])
+    
+    if (socketRef.current) {
+      socketRef.current.disconnect()
+      socketRef.current = null
+    }
+    
+    setIsConnected(false)
+    setConnectionError(null)
+    reconnectAttemptsRef.current = 0
+  }, [])
+
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      connect()
+    } else {
+      disconnect()
+    }
+
+    return () => {
+      disconnect()
+    }
+  }, [isAuthenticated, token, connect, disconnect])
 
   const joinQueueRoom = (clinicId) => {
     if (socketRef.current) {
@@ -128,6 +196,9 @@ export const useSocket = () => {
   return {
     socket: socketRef.current,
     isConnected,
+    connectionError,
+    reconnect: connect,
+    disconnect,
     joinQueueRoom,
     leaveQueueRoom,
     joinDoctorRoom,

@@ -105,6 +105,12 @@ def create_patient(data, current_user):
     db.session.add(patient)
     db.session.commit()
     
+    # Emit real-time update for patient creation
+    from app import socketio
+    socketio.emit('patient_created', {
+        'patient': patient.to_dict()
+    })
+    
     return jsonify({
         'message': 'Patient created successfully',
         'patient': patient.to_dict()
@@ -166,6 +172,12 @@ def update_patient(patient_id, current_user):
     
     patient.updated_at = datetime.utcnow()
     db.session.commit()
+    
+    # Emit real-time update for patient update
+    from app import socketio
+    socketio.emit('patient_updated', {
+        'patient': patient.to_dict()
+    })
     
     return jsonify({
         'message': 'Patient updated successfully',

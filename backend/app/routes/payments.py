@@ -108,6 +108,25 @@ def process_existing_payment(payment_id, data, current_user):
     
     db.session.commit()
     
+    # Emit real-time update for payment processing
+    from app import socketio
+    from app.services.queue_service import QueueService
+    
+    # Emit payment processed event
+    socketio.emit('payment_processed', {
+        'payment': payment.to_dict(),
+        'visit': visit.to_dict() if visit else None
+    })
+    
+    # Emit queue updates if visit exists
+    if visit:
+        queue_service = QueueService()
+        queue_data = queue_service.get_clinic_queue(visit.clinic_id)
+        socketio.emit('queue_updated', queue_data, room=f'clinic_{visit.clinic_id}')
+        
+        doctor_queue_data = queue_service.get_doctor_queue(visit.doctor_id)
+        socketio.emit('queue_updated', doctor_queue_data, room=f'doctor_{visit.doctor_id}')
+    
     # Invalidate cache
     cache.delete_memoized(get_payments)
     

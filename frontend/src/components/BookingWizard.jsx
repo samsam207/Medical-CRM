@@ -189,7 +189,7 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
     if (isValid && currentStep < 5) {
       setCurrentStep(currentStep + 1)
     }
-  }, [currentStep, formData])
+  }, [currentStep])
 
   const handlePrevious = useCallback(() => {
     if (currentStep > 1) {

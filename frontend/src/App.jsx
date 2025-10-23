@@ -12,7 +12,7 @@ import ErrorBoundary from './components/common/ErrorBoundary'
 function App() {
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background-500 font-arabic" dir="rtl">
         <Routes>
             <Route 
               path="/login" 

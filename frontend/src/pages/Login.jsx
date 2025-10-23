@@ -53,44 +53,54 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background-500 via-background-400 to-background-600 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8 animate-fade-in">
         <div className="text-center">
-          <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
-            Medical CRM
+          <div className="mx-auto h-16 w-16 bg-gradient-primary rounded-3xl flex items-center justify-center mb-6 shadow-soft-lg">
+            <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+            </svg>
+          </div>
+          <h2 className="text-4xl font-bold font-arabic text-primary-500 mb-2">
+            نظام إدارة العيادة الطبية
           </h2>
-          <p className="mt-2 text-sm text-gray-600">
-            Sign in to your account
+          <p className="text-lg font-arabic text-secondary-600">
+            تسجيل الدخول إلى حسابك
           </p>
         </div>
 
-        <Card>
+        <Card className="animate-slide-in">
           <CardHeader>
-            <CardTitle className="text-center">Login</CardTitle>
+            <CardTitle className="text-center text-2xl">تسجيل الدخول</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               {error && (
-                <div className="bg-error-50 border border-error-200 text-error-700 px-4 py-3 rounded-lg">
-                  {error}
+                <div className="bg-error-50 border-2 border-error-200 text-error-700 px-6 py-4 rounded-2xl font-arabic">
+                  <div className="flex items-center gap-2">
+                    <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    {error}
+                  </div>
                 </div>
               )}
 
               <div>
-                <label htmlFor="username" className="label">
-                  Username
+                <label htmlFor="username" className="block text-sm font-bold font-arabic text-gray-700 mb-2">
+                  اسم المستخدم
                 </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <User className="h-5 w-5 text-gray-400" />
+                  <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                    <User className="h-5 w-5 text-secondary-400" />
                   </div>
                   <input
                     id="username"
                     name="username"
                     type="text"
                     required
-                    className="input pl-10"
-                    placeholder="Enter your username"
+                    className="input-field pr-12 text-right font-arabic"
+                    placeholder="أدخل اسم المستخدم"
                     value={formData.username}
                     onChange={handleChange}
                   />
@@ -98,32 +108,32 @@ const Login = () => {
               </div>
 
               <div>
-                <label htmlFor="password" className="label">
-                  Password
+                <label htmlFor="password" className="block text-sm font-bold font-arabic text-gray-700 mb-2">
+                  كلمة المرور
                 </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Lock className="h-5 w-5 text-gray-400" />
+                  <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                    <Lock className="h-5 w-5 text-secondary-400" />
                   </div>
                   <input
                     id="password"
                     name="password"
                     type={showPassword ? 'text' : 'password'}
                     required
-                    className="input pl-10 pr-10"
-                    placeholder="Enter your password"
+                    className="input-field pr-12 pl-12 text-right font-arabic"
+                    placeholder="أدخل كلمة المرور"
                     value={formData.password}
                     onChange={handleChange}
                   />
                   <button
                     type="button"
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    className="absolute inset-y-0 left-0 pl-4 flex items-center"
                     onClick={() => setShowPassword(!showPassword)}
                   >
                     {showPassword ? (
-                      <EyeOff className="h-5 w-5 text-gray-400" />
+                      <EyeOff className="h-5 w-5 text-secondary-400 hover:text-secondary-600 transition-colors" />
                     ) : (
-                      <Eye className="h-5 w-5 text-gray-400" />
+                      <Eye className="h-5 w-5 text-secondary-400 hover:text-secondary-600 transition-colors" />
                     )}
                   </button>
                 </div>
@@ -134,17 +144,18 @@ const Login = () => {
                 className="w-full"
                 loading={isLoading}
                 disabled={isLoading}
+                size="lg"
               >
-                {isLoading ? 'Signing in...' : 'Sign in'}
+                {isLoading ? 'جاري تسجيل الدخول...' : 'تسجيل الدخول'}
               </Button>
             </form>
 
-            <div className="mt-6 text-center text-sm text-gray-600">
-              <p>Demo Credentials:</p>
-              <p className="mt-2">
-                <strong>Admin:</strong> admin / admin123<br />
-                <strong>Receptionist:</strong> sara_reception / sara123
-              </p>
+            <div className="mt-8 p-6 bg-gradient-to-r from-accent-50 to-accent-100 rounded-2xl border border-accent-200">
+              <h3 className="text-lg font-bold font-arabic text-accent-700 mb-3">بيانات تجريبية:</h3>
+              <div className="space-y-2 text-sm font-arabic text-accent-600">
+                <p><strong>مدير:</strong> admin / admin123</p>
+                <p><strong>استقبال:</strong> sara_reception / sara123</p>
+              </div>
             </div>
           </CardContent>
         </Card>

@@ -56,17 +56,10 @@ def get_appointments():
             return jsonify({'message': 'Invalid date format. Use YYYY-MM-DD'}), 400
     if status:
         try:
-            # Handle both uppercase and lowercase status values
-            status_lower = status.lower()
-            status_enum = AppointmentStatus(status_lower)
+            status_enum = AppointmentStatus(status)
             query = query.filter(Appointment.status == status_enum)
         except ValueError:
-            return jsonify({'message': f'Invalid status: {status}. Valid values: {[s.value for s in AppointmentStatus]}'}), 400
-    
-    # Filter out appointments that already have visits (already checked in)
-    # Use a subquery to find appointments without visits
-    from sqlalchemy import and_
-    query = query.filter(~db.session.query(Visit).filter(Visit.appointment_id == Appointment.id).exists())
+            return jsonify({'message': 'Invalid status'}), 400
     
     # Order by start time
     query = query.order_by(Appointment.start_time.desc())
@@ -184,14 +177,12 @@ def create_appointment(data, current_user):
         from app.services.queue_service import QueueService
         
         # Emit appointment created event
-        appointment_data = {
+        socketio.emit('appointment_created', {
             'appointment': appointment.to_dict(),
             'visit': visit.to_dict(),
             'clinic_id': appointment.clinic_id,
             'doctor_id': appointment.doctor_id
-        }
-        socketio.emit('appointment_created', appointment_data, room=f'clinic_{appointment.clinic_id}')
-        socketio.emit('appointment_created', appointment_data, room=f'doctor_{appointment.doctor_id}')
+        }, broadcast=True)
         
         # Emit queue update for the clinic
         queue_service = QueueService()
@@ -260,11 +251,9 @@ def update_appointment(appointment_id, current_user):
     
     if 'status' in data:
         try:
-            # Handle both uppercase and lowercase status values
-            status_lower = data['status'].lower()
-            appointment.status = AppointmentStatus(status_lower)
+            appointment.status = AppointmentStatus(data['status'])
         except ValueError:
-            return jsonify({'message': f'Invalid status: {data["status"]}. Valid values: {[s.value for s in AppointmentStatus]}'}), 400
+            return jsonify({'message': 'Invalid status'}), 400
     
     if 'notes' in data:
         appointment.notes = data['notes']
@@ -276,13 +265,11 @@ def update_appointment(appointment_id, current_user):
     from app.services.queue_service import QueueService
     
     # Emit appointment updated event
-    appointment_data = {
+    socketio.emit('appointment_updated', {
         'appointment': appointment.to_dict(),
         'clinic_id': appointment.clinic_id,
         'doctor_id': appointment.doctor_id
-    }
-    socketio.emit('appointment_updated', appointment_data, room=f'clinic_{appointment.clinic_id}')
-    socketio.emit('appointment_updated', appointment_data, room=f'doctor_{appointment.doctor_id}')
+    }, broadcast=True)
     
     # Emit queue update for the clinic
     queue_service = QueueService()
@@ -318,13 +305,11 @@ def cancel_appointment(appointment_id, current_user):
     from app.services.queue_service import QueueService
     
     # Emit appointment cancelled event
-    appointment_data = {
+    socketio.emit('appointment_cancelled', {
         'appointment': appointment.to_dict(),
         'clinic_id': appointment.clinic_id,
         'doctor_id': appointment.doctor_id
-    }
-    socketio.emit('appointment_cancelled', appointment_data, room=f'clinic_{appointment.clinic_id}')
-    socketio.emit('appointment_cancelled', appointment_data, room=f'doctor_{appointment.doctor_id}')
+    }, broadcast=True)
     
     # Emit queue update for the clinic
     queue_service = QueueService()

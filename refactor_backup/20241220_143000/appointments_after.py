@@ -56,17 +56,10 @@ def get_appointments():
             return jsonify({'message': 'Invalid date format. Use YYYY-MM-DD'}), 400
     if status:
         try:
-            # Handle both uppercase and lowercase status values
-            status_lower = status.lower()
-            status_enum = AppointmentStatus(status_lower)
+            status_enum = AppointmentStatus(status)
             query = query.filter(Appointment.status == status_enum)
         except ValueError:
-            return jsonify({'message': f'Invalid status: {status}. Valid values: {[s.value for s in AppointmentStatus]}'}), 400
-    
-    # Filter out appointments that already have visits (already checked in)
-    # Use a subquery to find appointments without visits
-    from sqlalchemy import and_
-    query = query.filter(~db.session.query(Visit).filter(Visit.appointment_id == Appointment.id).exists())
+            return jsonify({'message': 'Invalid status'}), 400
     
     # Order by start time
     query = query.order_by(Appointment.start_time.desc())
@@ -260,11 +253,9 @@ def update_appointment(appointment_id, current_user):
     
     if 'status' in data:
         try:
-            # Handle both uppercase and lowercase status values
-            status_lower = data['status'].lower()
-            appointment.status = AppointmentStatus(status_lower)
+            appointment.status = AppointmentStatus(data['status'])
         except ValueError:
-            return jsonify({'message': f'Invalid status: {data["status"]}. Valid values: {[s.value for s in AppointmentStatus]}'}), 400
+            return jsonify({'message': 'Invalid status'}), 400
     
     if 'notes' in data:
         appointment.notes = data['notes']

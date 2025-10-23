@@ -39,12 +39,10 @@ def get_visits():
         query = query.filter(Visit.patient_id == patient_id)
     if status:
         try:
-            # Handle both uppercase and lowercase status values
-            status_lower = status.lower()
-            status_enum = VisitStatus(status_lower)
+            status_enum = VisitStatus(status)
             query = query.filter(Visit.status == status_enum)
         except ValueError:
-            return jsonify({'message': f'Invalid status: {status}. Valid values: {[s.value for s in VisitStatus]}'}), 400
+            return jsonify({'message': 'Invalid status'}), 400
     if visit_type:
         try:
             type_enum = VisitType(visit_type)
@@ -202,11 +200,9 @@ def update_visit_status(visit_id, data, current_user):
     visit = Visit.query.get_or_404(visit_id)
     
     try:
-        # Handle both uppercase and lowercase status values
-        status_lower = data['status'].lower()
-        new_status = VisitStatus(status_lower)
+        new_status = VisitStatus(data['status'])
     except ValueError:
-        return jsonify({'message': f'Invalid status: {data["status"]}. Valid values: {[s.value for s in VisitStatus]}'}), 400
+        return jsonify({'message': 'Invalid status'}), 400
     
     # Update status
     visit.status = new_status
@@ -224,19 +220,6 @@ def update_visit_status(visit_id, data, current_user):
     queue_service = QueueService()
     queue_data = queue_service.get_clinic_queue(visit.clinic_id)
     socketio.emit('queue_updated', queue_data, room=f'clinic_{visit.clinic_id}')
-    
-    # Emit doctor queue update
-    doctor_queue_data = queue_service.get_doctor_queue(visit.doctor_id)
-    socketio.emit('queue_updated', doctor_queue_data, room=f'doctor_{visit.doctor_id}')
-    
-    # Emit visit status change event to both rooms
-    visit_status_data = {
-        'visit': visit.to_dict(),
-        'clinic_id': visit.clinic_id,
-        'doctor_id': visit.doctor_id
-    }
-    socketio.emit('visit_status_changed', visit_status_data, room=f'clinic_{visit.clinic_id}')
-    socketio.emit('visit_status_changed', visit_status_data, room=f'doctor_{visit.doctor_id}')
     
     return jsonify({
         'message': 'Visit status updated successfully',
@@ -262,19 +245,6 @@ def call_patient(visit_id, current_user):
     queue_service = QueueService()
     queue_data = queue_service.get_clinic_queue(visit.clinic_id)
     socketio.emit('queue_updated', queue_data, room=f'clinic_{visit.clinic_id}')
-    
-    # Emit doctor queue update
-    doctor_queue_data = queue_service.get_doctor_queue(visit.doctor_id)
-    socketio.emit('queue_updated', doctor_queue_data, room=f'doctor_{visit.doctor_id}')
-    
-    # Emit visit status change event to both rooms
-    visit_status_data = {
-        'visit': visit.to_dict(),
-        'clinic_id': visit.clinic_id,
-        'doctor_id': visit.doctor_id
-    }
-    socketio.emit('visit_status_changed', visit_status_data, room=f'clinic_{visit.clinic_id}')
-    socketio.emit('visit_status_changed', visit_status_data, room=f'doctor_{visit.doctor_id}')
     
     return jsonify({
         'message': 'Patient called successfully',

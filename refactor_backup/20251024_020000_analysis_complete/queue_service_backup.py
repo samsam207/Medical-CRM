@@ -13,15 +13,11 @@ class QueueService:
     
     def get_clinic_queue(self, clinic_id):
         """Get live queue for a clinic"""
-        # Get all visits for the clinic from the last 7 days (including today)
-        # This ensures we show existing data while still being reasonable
-        from datetime import timedelta
+        # Get all visits for the clinic today
         today = datetime.now().date()
-        week_ago = today - timedelta(days=7)
-        
         visits = db.session.query(Visit).filter(
             Visit.clinic_id == clinic_id,
-            db.func.date(Visit.created_at) >= week_ago
+            db.func.date(Visit.created_at) == today
         ).order_by(Visit.queue_number).all()
         
         # Group by status
@@ -62,14 +58,11 @@ class QueueService:
     
     def get_doctor_queue(self, doctor_id):
         """Get live queue for a doctor"""
-        # Get all visits for the doctor from the last 7 days (including today)
-        from datetime import timedelta
+        # Get all visits for the doctor today
         today = datetime.now().date()
-        week_ago = today - timedelta(days=7)
-        
         visits = db.session.query(Visit).filter(
             Visit.doctor_id == doctor_id,
-            db.func.date(Visit.created_at) >= week_ago
+            db.func.date(Visit.created_at) == today
         ).order_by(Visit.queue_number).all()
         
         # Group by status
@@ -214,14 +207,10 @@ class QueueService:
     
     def get_next_patient(self, doctor_id):
         """Get next patient in queue for doctor"""
-        from datetime import timedelta
-        today = datetime.now().date()
-        week_ago = today - timedelta(days=7)
-        
         visit = db.session.query(Visit).filter(
             Visit.doctor_id == doctor_id,
             Visit.status == VisitStatus.WAITING,
-            db.func.date(Visit.created_at) >= week_ago
+            db.func.date(Visit.created_at) == datetime.now().date()
         ).order_by(Visit.queue_number).first()
         
         return visit
@@ -233,15 +222,11 @@ class QueueService:
             return None
         
         # Count waiting visits before this one
-        from datetime import timedelta
-        today = datetime.now().date()
-        week_ago = today - timedelta(days=7)
-        
         position = db.session.query(Visit).filter(
             Visit.clinic_id == visit.clinic_id,
             Visit.status == VisitStatus.WAITING,
             Visit.queue_number < visit.queue_number,
-            db.func.date(Visit.created_at) >= week_ago
+            db.func.date(Visit.created_at) == datetime.now().date()
         ).count() + 1
         
         return position

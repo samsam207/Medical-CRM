@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../stores/authStore'
 import { useSocket } from '../hooks/useSocket'
@@ -6,17 +6,12 @@ import { dashboardApi } from '../api/dashboard'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/common/Card'
 import Button from '../components/common/Button'
 import DoctorQueue from '../components/DoctorQueue'
-import { Users, Clock, CheckCircle, AlertCircle, Stethoscope, Wifi, WifiOff } from 'lucide-react'
+import { Users, Clock, CheckCircle, AlertCircle, Stethoscope } from 'lucide-react'
 
 const DoctorDashboard = () => {
   const { user, token, logout } = useAuthStore()
-  const { socket, isConnected, connectionError, reconnect, onAppointmentCreated, onAppointmentUpdated, onAppointmentCancelled } = useSocket()
+  const { socket, isConnected, onAppointmentCreated, onAppointmentUpdated, onAppointmentCancelled } = useSocket()
   const [activeTab, setActiveTab] = useState('overview')
-  
-  // Debounced refetch to prevent excessive API calls
-  const debounceTimeoutRef = useRef(null)
-  const pendingEventsRef = useRef(new Set())
-  const [lastUpdateTime, setLastUpdateTime] = useState(null)
 
   const { data: stats, isLoading, error, refetch } = useQuery({
     queryKey: ['dashboard-stats'],
@@ -24,26 +19,7 @@ const DoctorDashboard = () => {
     refetchInterval: 30000 // Refresh every 30 seconds
   })
 
-  // Debounced refetch function to prevent excessive API calls
-  const debouncedRefetch = useCallback((eventType, data) => {
-    // Add event to pending set
-    pendingEventsRef.current.add(eventType)
-    
-    // Clear existing timeout
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current)
-    }
-    
-    // Set new timeout for batched refetch
-    debounceTimeoutRef.current = setTimeout(() => {
-      console.log(`Batched refetch triggered by events: ${Array.from(pendingEventsRef.current).join(', ')}`)
-      pendingEventsRef.current.clear()
-      setLastUpdateTime(new Date().toLocaleTimeString())
-      refetch()
-    }, 500) // 500ms debounce delay
-  }, [refetch])
-
-  // Set up real-time updates with event batching
+  // Set up real-time updates
   useEffect(() => {
     if (socket && isConnected && user?.id) {
       // Join doctor room for real-time updates
@@ -55,52 +31,35 @@ const DoctorDashboard = () => {
       // Listen for queue updates
       socket.on('queue_updated', (data) => {
         console.log('Doctor queue updated:', data)
-        debouncedRefetch('queue_updated', data)
+        refetch()
       })
 
       // Listen for new check-ins
       socket.on('new_checkin', (data) => {
         console.log('New check-in for doctor:', data)
-        debouncedRefetch('new_checkin', data)
+        refetch()
       })
 
       // Listen for visit status changes
       socket.on('visit_status_changed', (data) => {
         console.log('Visit status changed:', data)
-        debouncedRefetch('visit_status_changed', data)
+        refetch()
       })
 
       // Listen for appointment events
       socket.on('appointment_created', (data) => {
         console.log('Appointment created:', data)
-        debouncedRefetch('appointment_created', data)
+        refetch()
       })
 
       socket.on('appointment_updated', (data) => {
         console.log('Appointment updated:', data)
-        debouncedRefetch('appointment_updated', data)
+        refetch()
       })
 
       socket.on('appointment_cancelled', (data) => {
         console.log('Appointment cancelled:', data)
-        debouncedRefetch('appointment_cancelled', data)
-      })
-
-      // Listen for patient events
-      socket.on('patient_created', (data) => {
-        console.log('Patient created:', data)
-        debouncedRefetch('patient_created', data)
-      })
-
-      socket.on('patient_updated', (data) => {
-        console.log('Patient updated:', data)
-        debouncedRefetch('patient_updated', data)
-      })
-
-      // Listen for payment events
-      socket.on('payment_processed', (data) => {
-        console.log('Payment processed:', data)
-        debouncedRefetch('payment_processed', data)
+        refetch()
       })
 
       return () => {
@@ -114,12 +73,9 @@ const DoctorDashboard = () => {
         socket.off('appointment_created')
         socket.off('appointment_updated')
         socket.off('appointment_cancelled')
-        socket.off('patient_created')
-        socket.off('patient_updated')
-        socket.off('payment_processed')
       }
     }
-  }, [socket, isConnected, user?.id, token, debouncedRefetch])
+  }, [socket, isConnected, user?.id, token, refetch])
 
   const handleLogout = () => {
     logout()
@@ -157,30 +113,11 @@ const DoctorDashboard = () => {
             </div>
             <div className="flex items-center space-x-4">
               <div className="flex items-center gap-2">
-                {isConnected ? (
-                  <Wifi className="w-4 h-4 text-green-500" />
-                ) : (
-                  <WifiOff className="w-4 h-4 text-red-500" />
-                )}
+                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
                 <span className="text-xs text-gray-500">
                   {isConnected ? 'Connected' : 'Disconnected'}
                 </span>
-                {connectionError && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={reconnect}
-                    className="text-xs"
-                  >
-                    Retry
-                  </Button>
-                )}
               </div>
-              {lastUpdateTime && (
-                <span className="text-xs text-gray-400">
-                  Last update: {lastUpdateTime}
-                </span>
-              )}
               <span className="text-sm text-gray-700">Welcome, Dr. {user?.username}</span>
               <Button variant="outline" size="sm" onClick={handleLogout}>
                 Logout
