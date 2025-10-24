@@ -1,222 +1,261 @@
-# Database Schema Mapping
+# Database Schema Map
 
 ## Core Tables
 
 ### Users Table (`users`)
 - **Primary Key**: `id` (Integer)
 - **Fields**:
-  - `username` (String, Unique, Indexed)
-  - `password_hash` (String)
+  - `username` (String, 80 chars, unique, indexed)
+  - `password_hash` (String, 255 chars)
   - `role` (Enum: ADMIN, RECEPTIONIST, DOCTOR)
   - `created_at` (DateTime)
 - **Relationships**:
-  - One-to-Many: `created_appointments` (Appointment.created_by)
-  - One-to-Many: `audit_logs` (AuditLog.user_id)
+  - One-to-many with `appointments` (created_appointments)
+  - One-to-many with `audit_log` (audit_logs)
+- **Indexes**: username
 
 ### Token Blacklist Table (`token_blacklist`)
 - **Primary Key**: `id` (Integer)
 - **Fields**:
-  - `jti` (String, Indexed) - JWT ID for blacklisted tokens
+  - `jti` (String, 36 chars, indexed)
   - `created_at` (DateTime)
-
-### Patients Table (`patients`)
-- **Primary Key**: `id` (Integer)
-- **Fields**:
-  - `name` (String, Indexed)
-  - `phone` (String, Unique, Indexed)
-  - `address` (Text)
-  - `age` (Integer)
-  - `gender` (Enum: male, female, other)
-  - `medical_history` (Text)
-  - `created_at` (DateTime)
-  - `updated_at` (DateTime, Auto-update)
-- **Indexes**: phone, name, gender, created_at
-- **Relationships**:
-  - One-to-Many: `appointments` (Appointment.patient_id)
-  - One-to-Many: `visits` (Visit.patient_id)
-  - One-to-Many: `payments` (Payment.patient_id)
+- **Purpose**: JWT token revocation
 
 ### Clinics Table (`clinics`)
 - **Primary Key**: `id` (Integer)
 - **Fields**:
-  - `name` (String)
-  - `room_number` (String)
-  - `is_active` (Boolean)
+  - `name` (String, 100 chars)
+  - `room_number` (String, 20 chars)
+  - `is_active` (Boolean, default True)
   - `created_at` (DateTime)
 - **Relationships**:
-  - One-to-Many: `doctors` (Doctor.clinic_id)
-  - One-to-Many: `services` (Service.clinic_id)
-  - One-to-Many: `appointments` (Appointment.clinic_id)
-  - One-to-Many: `visits` (Visit.clinic_id)
+  - One-to-many with `doctors`
+  - One-to-many with `services`
+  - One-to-many with `appointments`
+  - One-to-many with `visits`
 
 ### Doctors Table (`doctors`)
 - **Primary Key**: `id` (Integer)
+- **Foreign Keys**:
+  - `user_id` → `users.id` (nullable)
+  - `clinic_id` → `clinics.id`
 - **Fields**:
-  - `user_id` (Integer, Foreign Key to users.id)
-  - `name` (String, Indexed)
-  - `specialty` (String, Indexed)
-  - `working_days` (JSON) - Array of day names
-  - `working_hours` (JSON) - Object with start/end times
-  - `clinic_id` (Integer, Foreign Key to clinics.id)
-  - `share_percentage` (Float, Default: 0.7)
+  - `name` (String, 100 chars, indexed)
+  - `specialty` (String, 100 chars)
+  - `working_days` (JSON array: ["Monday", "Wednesday"])
+  - `working_hours` (JSON object: {"start": "09:00", "end": "17:00"})
+  - `share_percentage` (Float, default 0.7)
   - `created_at` (DateTime)
-- **Indexes**: clinic_id, specialty, user_id
 - **Relationships**:
-  - Many-to-One: `clinic` (Clinic.id)
-  - One-to-Many: `appointments` (Appointment.doctor_id)
-  - One-to-Many: `visits` (Visit.doctor_id)
-  - One-to-Many: `prescriptions` (Prescription.doctor_id)
+  - Many-to-one with `users` (user)
+  - Many-to-one with `clinics` (clinic)
+  - One-to-many with `appointments`
+  - One-to-many with `visits`
+  - One-to-many with `prescriptions`
+- **Indexes**: clinic_id, specialty, user_id
+
+### Patients Table (`patients`)
+- **Primary Key**: `id` (Integer)
+- **Fields**:
+  - `name` (String, 100 chars, indexed)
+  - `phone` (String, 20 chars, unique, indexed)
+  - `address` (Text)
+  - `age` (Integer)
+  - `gender` (Enum: MALE, FEMALE, OTHER)
+  - `medical_history` (Text)
+  - `created_at` (DateTime, indexed)
+  - `updated_at` (DateTime, auto-update)
+- **Relationships**:
+  - One-to-many with `appointments`
+  - One-to-many with `visits`
+  - One-to-many with `payments`
+- **Indexes**: phone, name, gender, created_at
 
 ### Services Table (`services`)
 - **Primary Key**: `id` (Integer)
+- **Foreign Keys**:
+  - `clinic_id` → `clinics.id`
 - **Fields**:
-  - `clinic_id` (Integer, Foreign Key to clinics.id)
-  - `name` (String)
-  - `duration` (Integer) - Duration in minutes
-  - `price` (Numeric 10,2)
-  - `is_active` (Boolean)
+  - `name` (String, 100 chars)
+  - `duration` (Integer, minutes)
+  - `price` (Numeric, 10,2)
+  - `is_active` (Boolean, default True)
   - `created_at` (DateTime)
 - **Relationships**:
-  - Many-to-One: `clinic` (Clinic.id)
-  - One-to-Many: `appointments` (Appointment.service_id)
-  - One-to-Many: `visits` (Visit.service_id)
+  - Many-to-one with `clinics` (clinic)
+  - One-to-many with `appointments`
+  - One-to-many with `visits`
 
-## Core Business Tables
+## Appointment & Visit Tables
 
 ### Appointments Table (`appointments`)
 - **Primary Key**: `id` (Integer)
+- **Foreign Keys**:
+  - `clinic_id` → `clinics.id` (indexed)
+  - `doctor_id` → `doctors.id` (indexed)
+  - `patient_id` → `patients.id` (indexed)
+  - `service_id` → `services.id`
+  - `created_by` → `users.id`
 - **Fields**:
-  - `booking_id` (String, Unique, Indexed)
-  - `clinic_id` (Integer, Foreign Key, Indexed)
-  - `doctor_id` (Integer, Foreign Key, Indexed)
-  - `patient_id` (Integer, Foreign Key, Indexed)
-  - `service_id` (Integer, Foreign Key)
-  - `start_time` (DateTime, Indexed)
+  - `booking_id` (String, 50 chars, unique, indexed)
+  - `start_time` (DateTime, indexed)
   - `end_time` (DateTime)
-  - `status` (Enum: confirmed, checked_in, completed, cancelled, no_show)
-  - `booking_source` (Enum: phone, walk_in, online, system)
+  - `status` (Enum: CONFIRMED, CHECKED_IN, COMPLETED, CANCELLED, NO_SHOW)
+  - `booking_source` (Enum: PHONE, WALK_IN, ONLINE, SYSTEM)
   - `notes` (Text)
-  - `created_by` (Integer, Foreign Key to users.id)
   - `created_at` (DateTime)
-- **Indexes**: doctor+date, patient+date, clinic+date, status+date, booking_id
 - **Relationships**:
-  - Many-to-One: `clinic` (Clinic.id)
-  - Many-to-One: `doctor` (Doctor.id)
-  - Many-to-One: `patient` (Patient.id)
-  - Many-to-One: `service` (Service.id)
-  - Many-to-One: `creator` (User.id)
-  - One-to-One: `visit` (Visit.appointment_id)
+  - Many-to-one with `clinics` (clinic)
+  - Many-to-one with `doctors` (doctor)
+  - Many-to-one with `patients` (patient)
+  - Many-to-one with `services` (service)
+  - Many-to-one with `users` (creator)
+  - One-to-one with `visits` (visit)
+- **Indexes**: 
+  - doctor_id + date(start_time)
+  - patient_id + date(start_time)
+  - clinic_id + date(start_time)
+  - status + date(start_time)
+  - booking_id
 
 ### Visits Table (`visits`)
 - **Primary Key**: `id` (Integer)
+- **Foreign Keys**:
+  - `appointment_id` → `appointments.id` (nullable)
+  - `doctor_id` → `doctors.id` (indexed)
+  - `patient_id` → `patients.id` (indexed)
+  - `service_id` → `services.id`
+  - `clinic_id` → `clinics.id` (indexed)
 - **Fields**:
-  - `appointment_id` (Integer, Foreign Key to appointments.id, Nullable)
-  - `doctor_id` (Integer, Foreign Key, Indexed)
-  - `patient_id` (Integer, Foreign Key, Indexed)
-  - `service_id` (Integer, Foreign Key)
-  - `clinic_id` (Integer, Foreign Key, Indexed)
   - `check_in_time` (DateTime)
   - `start_time` (DateTime)
   - `end_time` (DateTime)
-  - `status` (Enum: waiting, called, in_progress, pending_payment, completed, Indexed)
-  - `visit_type` (Enum: scheduled, walk_in)
+  - `status` (Enum: WAITING, CALLED, IN_PROGRESS, PENDING_PAYMENT, COMPLETED, indexed)
+  - `visit_type` (Enum: SCHEDULED, WALK_IN)
   - `queue_number` (Integer)
   - `created_at` (DateTime)
-- **Indexes**: clinic+status+date, doctor+status, patient+date
 - **Relationships**:
-  - Many-to-One: `appointment` (Appointment.id)
-  - Many-to-One: `doctor` (Doctor.id)
-  - Many-to-One: `patient` (Patient.id)
-  - Many-to-One: `service` (Service.id)
-  - Many-to-One: `clinic` (Clinic.id)
-  - One-to-One: `prescription` (Prescription.visit_id)
-  - One-to-One: `payment` (Payment.visit_id)
+  - Many-to-one with `appointments` (appointment)
+  - Many-to-one with `doctors` (doctor)
+  - Many-to-one with `patients` (patient)
+  - Many-to-one with `services` (service)
+  - Many-to-one with `clinics` (clinic)
+  - One-to-one with `prescriptions` (prescription)
+  - One-to-one with `payments` (payment)
+- **Indexes**:
+  - clinic_id + status + date(created_at)
+  - doctor_id + status
+  - patient_id + date(created_at)
+
+## Payment & Prescription Tables
 
 ### Payments Table (`payments`)
 - **Primary Key**: `id` (Integer)
+- **Foreign Keys**:
+  - `visit_id` → `visits.id` (indexed)
+  - `patient_id` → `patients.id` (indexed)
 - **Fields**:
-  - `visit_id` (Integer, Foreign Key, Indexed)
-  - `patient_id` (Integer, Foreign Key, Indexed)
-  - `total_amount` (Numeric 10,2)
-  - `amount_paid` (Numeric 10,2)
-  - `payment_method` (Enum: cash, visa, bank_transfer)
-  - `status` (Enum: pending, paid, refunded)
-  - `doctor_share` (Numeric 10,2)
-  - `center_share` (Numeric 10,2)
+  - `total_amount` (Numeric, 10,2)
+  - `amount_paid` (Numeric, 10,2)
+  - `payment_method` (Enum: CASH, VISA, BANK_TRANSFER)
+  - `status` (Enum: PENDING, PAID, REFUNDED)
+  - `doctor_share` (Numeric, 10,2)
+  - `center_share` (Numeric, 10,2)
   - `paid_at` (DateTime)
   - `created_at` (DateTime)
-- **Indexes**: date+status, patient+date, visit_id
 - **Relationships**:
-  - Many-to-One: `visit` (Visit.id)
-  - Many-to-One: `patient` (Patient.id)
-
-## Supporting Tables
+  - Many-to-one with `visits` (visit)
+  - Many-to-one with `patients` (patient)
+- **Indexes**:
+  - date(created_at) + status
+  - patient_id + date(created_at)
+  - visit_id
 
 ### Prescriptions Table (`prescriptions`)
 - **Primary Key**: `id` (Integer)
+- **Foreign Keys**:
+  - `visit_id` → `visits.id`
+  - `doctor_id` → `doctors.id` (indexed)
 - **Fields**:
-  - `visit_id` (Integer, Foreign Key)
-  - `doctor_id` (Integer, Foreign Key)
-  - `patient_id` (Integer, Foreign Key)
-  - `medication` (String)
-  - `dosage` (String)
-  - `instructions` (Text)
+  - `diagnosis` (Text)
+  - `medications` (Text)
+  - `notes` (Text)
+  - `image_path` (String, 255 chars)
   - `created_at` (DateTime)
 - **Relationships**:
-  - Many-to-One: `visit` (Visit.id)
-  - Many-to-One: `doctor` (Doctor.id)
-  - Many-to-One: `patient` (Patient.id)
+  - One-to-one with `visits` (visit)
+  - Many-to-one with `doctors` (doctor)
+
+## System Tables
 
 ### Notifications Table (`notifications`)
 - **Primary Key**: `id` (Integer)
+- **Foreign Keys**:
+  - `related_appointment_id` → `appointments.id` (nullable)
 - **Fields**:
-  - `user_id` (Integer, Foreign Key)
-  - `title` (String)
+  - `recipient` (String, 100 chars, indexed)
+  - `notification_type` (Enum: SMS_REMINDER, SMS_CONFIRMATION, SMS_FOLLOWUP)
   - `message` (Text)
-  - `type` (Enum)
-  - `is_read` (Boolean)
+  - `scheduled_time` (DateTime, indexed)
+  - `sent_at` (DateTime)
+  - `status` (Enum: PENDING, SENT, FAILED, indexed)
   - `created_at` (DateTime)
 - **Relationships**:
-  - Many-to-One: `user` (User.id)
+  - Many-to-one with `appointments` (related_appointment)
+- **Indexes**:
+  - recipient
+  - status + scheduled_time
+  - related_appointment_id
+  - notification_type
 
-### Audit Log Table (`audit_logs`)
+### Audit Log Table (`audit_log`)
 - **Primary Key**: `id` (Integer)
+- **Foreign Keys**:
+  - `user_id` → `users.id` (indexed)
 - **Fields**:
-  - `user_id` (Integer, Foreign Key)
-  - `action` (String)
-  - `entity_type` (String)
+  - `action` (String, 100 chars, indexed)
+  - `entity_type` (String, 50 chars)
   - `entity_id` (Integer)
-  - `ip_address` (String)
-  - `created_at` (DateTime)
+  - `details` (JSON)
+  - `ip_address` (String, 45 chars)
+  - `timestamp` (DateTime, indexed)
 - **Relationships**:
-  - Many-to-One: `user` (User.id)
+  - Many-to-one with `users` (user)
+- **Indexes**:
+  - entity_type + entity_id
+  - user_id + timestamp
+  - action
+  - timestamp
 
 ## Key Relationships Summary
 
-### Core Flow Relationships
-1. **User** → **Doctor** (One-to-One via user_id)
-2. **Clinic** → **Doctor** (One-to-Many)
-3. **Clinic** → **Service** (One-to-Many)
-4. **Patient** → **Appointment** (One-to-Many)
-5. **Appointment** → **Visit** (One-to-One)
-6. **Visit** → **Payment** (One-to-One)
-7. **Visit** → **Prescription** (One-to-One)
+### Core Flow
+1. **User** (receptionist) creates **Appointment** for **Patient** with **Doctor** at **Clinic** for **Service**
+2. **Appointment** gets checked in → creates **Visit** with queue number
+3. **Doctor** manages **Visit** through status changes
+4. **Visit** completion → creates **Payment** record
+5. **Doctor** may create **Prescription** for **Visit**
 
-### Status Enums
-- **AppointmentStatus**: confirmed, checked_in, completed, cancelled, no_show
-- **VisitStatus**: waiting, called, in_progress, pending_payment, completed
-- **PaymentStatus**: pending, paid, refunded
-- **UserRole**: ADMIN, RECEPTIONIST, DOCTOR
-- **Gender**: male, female, other
-- **PaymentMethod**: cash, visa, bank_transfer
-- **BookingSource**: phone, walk_in, online, system
-- **VisitType**: scheduled, walk_in
+### Foreign Key Dependencies
+- **Appointments** depend on: clinics, doctors, patients, services, users
+- **Visits** depend on: appointments (optional), doctors, patients, services, clinics
+- **Payments** depend on: visits, patients
+- **Prescriptions** depend on: visits, doctors
+- **Notifications** depend on: appointments (optional)
 
-### Performance Indexes
-- All foreign keys are indexed
-- Date-based composite indexes for reporting
-- Status-based indexes for filtering
-- Phone and name indexes for patient search
+### Data Integrity
+- **Cascade Rules**: Not explicitly defined (likely RESTRICT)
+- **Nullable Foreign Keys**: 
+  - `doctors.user_id` (doctor may not have user account)
+  - `visits.appointment_id` (walk-in visits)
+  - `notifications.related_appointment_id` (general notifications)
+- **Unique Constraints**: 
+  - `users.username`
+  - `patients.phone`
+  - `appointments.booking_id`
 
----
-**Status**: Database schema mapped and documented
+### Performance Considerations
+- **Heavy Indexing**: Date-based queries, status filtering, foreign key lookups
+- **JSON Fields**: `doctors.working_days`, `doctors.working_hours`, `audit_log.details`
+- **Decimal Precision**: Financial fields use Numeric(10,2)
+- **Enum Usage**: Status fields, types, methods for data consistency

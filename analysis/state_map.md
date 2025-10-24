@@ -1,156 +1,197 @@
-# Frontend State Management Mapping
+# Frontend State Management Map
 
 ## State Management Architecture
 
 ### Primary State Management: Zustand
 - **Library**: Zustand v4.4.1
-- **Pattern**: Multiple specialized stores for different domains
-- **Persistence**: Local storage persistence for auth state
+- **Pattern**: Multiple focused stores instead of single global store
+- **Persistence**: Used for authentication state only
 
-### Server State Management: React Query
-- **Library**: TanStack React Query v4.24.6
-- **Configuration**: 5-minute stale time, 1 retry, no window focus refetch
-- **Purpose**: Server state caching, background updates, optimistic updates
+### Secondary State Management: React Query
+- **Library**: @tanstack/react-query v4.24.6
+- **Purpose**: Server state management, caching, synchronization
+- **Configuration**: 5-minute stale time, 1 retry, no refetch on window focus
 
 ## Store Implementations
 
 ### 1. Authentication Store (`authStore.js`)
+- **Purpose**: User authentication and session management
+- **Persistence**: Yes (localStorage via zustand/middleware)
+- **State**:
+  - `user`: User object with role normalization
+  - `token`: JWT access token
+  - `isAuthenticated`: Boolean authentication status
+  - `isLoading`: Loading state for auth operations
+  - `error`: Error messages
+- **Actions**:
+  - `login(credentials)`: Authenticate user
+  - `logout()`: Clear session and call logout API
+  - `refreshToken()`: Refresh JWT token
+  - `clearError()`: Clear error state
+  - `initializeAuth()`: Initialize from stored token
+- **Features**:
+  - Role normalization (converts to lowercase)
+  - Automatic API client token management
+  - Token refresh with fallback to logout
+  - Persistent storage with partialize
 
-#### State Structure
-```javascript
-{
-  user: null,                    // Current user object
-  token: null,                   // JWT access token
-  isAuthenticated: false,        // Authentication status
-  isLoading: false,              // Loading state
-  error: null                    // Error message
-}
-```
+### 2. Queue Store (`queueStore.js`)
+- **Purpose**: Real-time queue data management
+- **Persistence**: No (in-memory only)
+- **State**:
+  - `clinicQueues`: Object mapping clinicId to queue data
+  - `doctorQueues`: Object mapping doctorId to queue data
+  - `selectedClinic`: Currently selected clinic ID
+  - `selectedDoctor`: Currently selected doctor ID
+  - `isConnected`: Socket connection status
+- **Actions**:
+  - `setSelectedClinic(clinicId)`: Set active clinic
+  - `setSelectedDoctor(doctorId)`: Set active doctor
+  - `setConnected(connected)`: Update connection status
+  - `updateClinicQueue(clinicId, data)`: Update clinic queue data
+  - `updateDoctorQueue(doctorId, data)`: Update doctor queue data
+  - `getCurrentQueue()`: Get current active queue
+  - `clearQueues()`: Clear all queue data
+- **Features**:
+  - Separate clinic and doctor queue management
+  - Dynamic queue selection
+  - Real-time data updates
 
-#### Key Actions
-- **`login(credentials)`**: Authenticate user, set token, normalize role
-- **`logout()`**: Clear auth state, blacklist token on server
-- **`refreshToken()`**: Refresh expired token
-- **`initializeAuth()`**: Restore auth state from localStorage
-- **`clearError()`**: Clear error messages
+### 3. Notification Store (`notificationStore.js`)
+- **Purpose**: In-app notification management
+- **Persistence**: No (in-memory only)
+- **State**:
+  - `notifications`: Array of notification objects
+  - `unreadCount`: Count of unread notifications
+- **Actions**:
+  - `addNotification(notification)`: Add new notification
+  - `markAsRead(notificationId)`: Mark specific notification as read
+  - `markAllAsRead()`: Mark all notifications as read
+  - `clearNotifications()`: Clear all notifications
+  - `setNotifications(notifications)`: Set notification list
+- **Features**:
+  - Automatic unread count management
+  - Individual and bulk read operations
 
-#### Persistence
-- **Storage**: localStorage with key 'auth-storage'
-- **Persisted Fields**: user, token, isAuthenticated
-- **Role Normalization**: Converts role to lowercase for consistent checks
+## React Query Usage
 
-#### API Integration
-- **Token Management**: Automatically sets Authorization header
-- **Error Handling**: Graceful error handling with user feedback
+### Query Client Configuration
+- **File**: `frontend/src/main.jsx`
+- **Configuration**:
+  - `retry: 1`: Single retry on failure
+  - `refetchOnWindowFocus: false`: No refetch on window focus
+  - `staleTime: 5 * 60 * 1000`: 5-minute stale time
 
-### 2. Notification Store (`notificationStore.js`)
+### Query Usage Patterns
 
-#### State Structure
-```javascript
-{
-  notifications: [],             // Array of notification objects
-  unreadCount: 0                // Count of unread notifications
-}
-```
+#### 1. Data Fetching Queries
+- **Dashboard Stats**: `useQuery` for statistics
+- **Lists**: `useQuery` for appointments, patients, payments
+- **Details**: `useQuery` for specific records
+- **Search**: `useQuery` for patient search with debouncing
 
-#### Key Actions
-- **`addNotification(notification)`**: Add new notification
-- **`markAsRead(notificationId)`**: Mark specific notification as read
-- **`markAllAsRead()`**: Mark all notifications as read
-- **`clearNotifications()`**: Clear all notifications
-- **`setNotifications(notifications)`**: Set notifications array
+#### 2. Mutation Patterns
+- **Create Operations**: `useMutation` for creating appointments, patients
+- **Update Operations**: `useMutation` for updating records
+- **Delete Operations**: `useMutation` for deleting records
+- **Status Changes**: `useMutation` for visit status updates
 
-#### Use Cases
-- Real-time notifications from SocketIO events
-- System alerts and updates
-- User action confirmations
+#### 3. Cache Management
+- **Query Invalidation**: `queryClient.invalidateQueries()` after mutations
+- **Optimistic Updates**: Not implemented (uses refetch pattern)
+- **Background Refetch**: Automatic with React Query
 
-### 3. Queue Store (`queueStore.js`)
+### Component-Specific State
 
-#### State Structure
-```javascript
-{
-  clinicQueues: {},             // { clinicId: queueData }
-  doctorQueues: {},             // { doctorId: queueData }
-  selectedClinic: null,         // Currently selected clinic ID
-  selectedDoctor: null,         // Currently selected doctor ID
-  isConnected: false            // SocketIO connection status
-}
-```
+#### Reception Dashboard
+- **Queries**: Stats, clinics, queue data
+- **Mutations**: Check-in, appointment management
+- **Real-time**: Socket events trigger refetch
 
-#### Key Actions
-- **`setSelectedClinic(clinicId)`**: Set active clinic for queue view
-- **`setSelectedDoctor(doctorId)`**: Set active doctor for queue view
-- **`setConnected(connected)`**: Update SocketIO connection status
-- **`updateClinicQueue(clinicId, queueData)`**: Update clinic queue data
-- **`updateDoctorQueue(doctorId, queueData)`**: Update doctor queue data
-- **`getCurrentQueue()`**: Get current queue based on selection
-- **`clearQueues()`**: Clear all queue data
+#### Doctor Dashboard
+- **Queries**: Stats, doctor queue
+- **Mutations**: Visit status changes, patient calls
+- **Real-time**: Socket events trigger refetch
 
-#### Real-time Integration
-- Receives queue updates from SocketIO events
-- Manages multiple clinic and doctor queues simultaneously
-- Provides current queue context for UI components
+#### Booking Wizard
+- **Queries**: Clinics, doctors, services, patients, available slots
+- **Mutations**: Create appointment, create patient
+- **State**: Form state managed locally
 
-## State Management Patterns
+#### Queue Management
+- **Queries**: Queue data, confirmed appointments
+- **Mutations**: Check-in, call, start, complete, skip
+- **Real-time**: Socket events for live updates
 
-### 1. Separation of Concerns
-- **Auth Store**: Authentication and user management
-- **Notification Store**: Real-time notifications
-- **Queue Store**: Queue management and real-time updates
-- **React Query**: Server state and API caching
-
-### 2. Persistence Strategy
-- **Auth State**: Persisted to localStorage for session recovery
-- **Queue State**: In-memory only (real-time updates)
-- **Notification State**: In-memory only (real-time updates)
-
-### 3. Real-time Integration
-- **SocketIO Events**: Update Zustand stores directly
-- **Queue Updates**: Real-time queue state synchronization
-- **Notification Updates**: Real-time notification delivery
-
-### 4. Error Handling
-- **Auth Errors**: Stored in auth store, displayed to user
-- **API Errors**: Handled by React Query with retry logic
-- **SocketIO Errors**: Handled by useSocket hook
-
-## Component Integration
+## State Flow Analysis
 
 ### Authentication Flow
-1. **Login Component**: Uses `useAuthStore.login()`
-2. **Protected Routes**: Check `useAuthStore.isAuthenticated`
-3. **API Calls**: Automatic token attachment via store
-4. **Logout**: Uses `useAuthStore.logout()`
+1. **Login**: User credentials → API call → Auth store update → Token storage
+2. **Token Refresh**: Automatic refresh on API calls → Auth store update
+3. **Logout**: API call → Clear auth store → Clear token storage
+
+### Real-time Data Flow
+1. **Socket Connection**: Auth store token → Socket connection
+2. **Room Joins**: User role → Join appropriate rooms
+3. **Event Handling**: Socket events → Store updates → Component re-renders
+4. **Data Sync**: Socket events → Query invalidation → Fresh data fetch
 
 ### Queue Management Flow
-1. **Queue Components**: Use `useQueueStore` for queue data
-2. **SocketIO Hook**: Updates queue store on real-time events
-3. **Selection State**: Managed by queue store
-4. **Real-time Updates**: Automatic UI updates via store subscriptions
+1. **Queue Selection**: User action → Queue store update
+2. **Data Fetching**: Queue store state → React Query → API call
+3. **Real-time Updates**: Socket events → Queue store update → UI update
+4. **Actions**: User action → Mutation → API call → Query invalidation
 
-### Notification Flow
-1. **SocketIO Events**: Add notifications to notification store
-2. **Notification Components**: Display notifications from store
-3. **Read Status**: Managed by notification store actions
-4. **Badge Counts**: Derived from unread count in store
+## State Management Issues Identified
 
-## State Synchronization
+### 1. State Synchronization
+- **Problem**: Socket events trigger refetch instead of direct state updates
+- **Impact**: Potential race conditions and unnecessary API calls
+- **Solution**: Direct state updates from socket events
 
-### Real-time Updates
-- **SocketIO Connection**: Managed by useSocket hook
-- **Event Handlers**: Update relevant Zustand stores
-- **UI Reactivity**: Automatic re-renders via store subscriptions
+### 2. Cache Management
+- **Problem**: Aggressive cache invalidation may cause unnecessary refetches
+- **Impact**: Performance degradation and potential UI flicker
+- **Solution**: More granular cache invalidation
 
-### Server State Synchronization
-- **React Query**: Handles server state caching and updates
-- **Optimistic Updates**: Supported for user actions
-- **Background Refetch**: Automatic data freshness
+### 3. Error Handling
+- **Problem**: Limited error state management in stores
+- **Impact**: Poor user experience on failures
+- **Solution**: Comprehensive error handling in all stores
 
-### Cross-Store Communication
-- **Auth Store**: Provides user context to other stores
-- **Queue Store**: Receives clinic/doctor selection from auth context
-- **Notification Store**: Receives user-specific notifications
+### 4. Memory Management
+- **Problem**: No cleanup of socket listeners on component unmount
+- **Impact**: Memory leaks and duplicate event handlers
+- **Solution**: Proper cleanup in useEffect hooks
 
----
-**Status**: Frontend state management architecture mapped and documented
+### 5. State Persistence
+- **Problem**: Only auth state is persisted
+- **Impact**: Loss of UI state on page refresh
+- **Solution**: Consider persisting more UI state
+
+## Recommendations
+
+### 1. Implement Direct State Updates
+- Update stores directly from socket events
+- Reduce dependency on query invalidation
+- Improve real-time responsiveness
+
+### 2. Optimize Cache Strategy
+- Use more specific query keys
+- Implement optimistic updates for better UX
+- Consider background refetch strategies
+
+### 3. Enhance Error Handling
+- Add error states to all stores
+- Implement retry mechanisms
+- Provide user-friendly error messages
+
+### 4. Improve Memory Management
+- Clean up socket listeners properly
+- Implement store cleanup on logout
+- Monitor for memory leaks
+
+### 5. Consider State Normalization
+- Normalize nested data structures
+- Implement selectors for derived state
+- Reduce data duplication across stores

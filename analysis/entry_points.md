@@ -5,100 +5,111 @@
 ### Main Application Entry
 - **File**: `backend/run.py`
 - **Purpose**: Development server entry point
-- **Features**: 
-  - Flask app creation via `create_app()`
-  - SocketIO support enabled
-  - Runs on port 5000 (configurable via FLASK_PORT env var)
+- **Key Features**:
+  - Creates Flask app using `create_app()`
+  - Initializes SocketIO with eventlet async mode
+  - Runs on host 0.0.0.0, port 5000 (configurable via env)
   - Debug mode configurable via FLASK_DEBUG env var
 
 ### Application Factory
 - **File**: `backend/app/__init__.py`
 - **Function**: `create_app(config_name=None)`
-- **Purpose**: Flask application factory pattern
-- **Key Components**:
-  - SQLAlchemy database initialization
-  - JWT authentication setup
-  - SocketIO configuration
-  - CORS setup
+- **Key Features**:
+  - Flask app creation and configuration
+  - Extension initialization (SQLAlchemy, JWT, SocketIO, CORS, Cache, Limiter)
   - Blueprint registration for all API routes
-  - Error handlers
-  - Upload directory creation
+  - SocketIO handlers registration
+  - Error handlers setup
+  - JWT security configuration
 
-### Blueprint Routes Registered
-1. `/api/auth` - Authentication routes
-2. `/api/appointments` - Appointment management
-3. `/api/visits` - Visit management
-4. `/api/patients` - Patient management
-5. `/api/payments` - Payment processing
-6. `/api/dashboard` - Dashboard data
-7. `/api/doctors` - Doctor management
-8. `/api/clinics` - Clinic management
-9. `/api/reports` - Reporting
-10. `/api/prescriptions` - Prescription management
-11. `/api/queue` - Queue management
-12. `/api` - Health check
+### Blueprint Routes (API Endpoints)
+- **Auth**: `/api/auth` - Authentication routes
+- **Appointments**: `/api/appointments` - Appointment management
+- **Visits**: `/api/visits` - Visit management
+- **Patients**: `/api/patients` - Patient management
+- **Payments**: `/api/payments` - Payment processing
+- **Dashboard**: `/api/dashboard` - Dashboard data
+- **Doctors**: `/api/doctors` - Doctor management
+- **Clinics**: `/api/clinics` - Clinic management
+- **Reports**: `/api/reports` - Reporting
+- **Prescriptions**: `/api/prescriptions` - Prescription management
+- **Queue**: `/api/queue` - Queue management
+- **Health**: `/api` - Health checks
 
 ## Frontend Entry Points
 
 ### Main Application Entry
 - **File**: `frontend/src/main.jsx`
 - **Purpose**: React application bootstrap
-- **Features**:
-  - React Query client setup
-  - Browser router configuration
-  - Auth store initialization
-  - Error boundary setup
+- **Key Features**:
+  - React Query client setup with 5-minute stale time
+  - BrowserRouter with React Router v7 features
+  - Auth store initialization on startup
+  - Error boundary wrapper
+
+### HTML Entry Point
+- **File**: `frontend/index.html`
+- **Purpose**: HTML document root
+- **Key Features**:
+  - RTL support for Arabic interface
+  - Medical CRM title
+  - Root div for React mounting
+  - Vite module script loading
 
 ### Application Component
 - **File**: `frontend/src/App.jsx`
-- **Purpose**: Main routing and layout
-- **Routes**:
-  - `/login` - Authentication page
-  - `/reception` - Receptionist dashboard (receptionist, admin roles)
-  - `/doctor` - Doctor dashboard (doctor, admin roles)
-  - `/patients` - Patient management (receptionist, admin roles)
-  - `/appointments` - Appointment management (receptionist, admin roles)
-  - `/payments` - Payment management (receptionist, admin roles)
-  - `/reports` - Reports (receptionist, admin roles)
-  - `/` - Redirects to login
-  - `*` - Fallback redirects to login
+- **Purpose**: Main application routing
+- **Key Features**:
+  - Protected routes with role-based access
+  - Route definitions for all pages
+  - Error boundary wrapper
+  - RTL layout with Arabic font
 
-### Development Server
-- **Script**: `npm run dev` (Vite)
-- **Port**: 3000 (default Vite port)
-- **Features**: Hot reload, development server
+### Route Structure
+- **Login**: `/login` - Authentication page
+- **Reception**: `/reception` - Receptionist dashboard (receptionist, admin roles)
+- **Doctor**: `/doctor` - Doctor dashboard (doctor, admin roles)
+- **Patients**: `/patients` - Patient management (receptionist, admin roles)
+- **Appointments**: `/appointments` - Appointment management (receptionist, admin roles)
+- **Payments**: `/payments` - Payment management (receptionist, admin roles)
+- **Reports**: `/reports` - Reporting (receptionist, admin roles)
 
-## State Management
+## Startup Scripts
 
-### Frontend State
-- **Auth Store**: Zustand store for authentication state
-- **React Query**: Server state management and caching
-- **Local Storage**: Auth token persistence
+### PowerShell Launcher
+- **File**: `start_medical_crm.ps1`
+- **Purpose**: Complete environment setup and launch
+- **Key Features**:
+  - Python and Node.js version checks
+  - Virtual environment creation and activation
+  - Backend dependency installation
+  - Database initialization and seeding
+  - Frontend dependency installation
+  - Dual server startup (backend + frontend)
+  - Browser auto-launch
 
-### Backend State
-- **Database**: SQLAlchemy with SQLite (development)
-- **Session**: Flask session management
-- **JWT**: Token-based authentication
-- **SocketIO**: Real-time communication state
+### Docker Support
+- **File**: `docker-compose.yml`
+- **Purpose**: Containerized deployment
+- **Services**: Backend, Frontend, Redis, PostgreSQL
 
-## Key Dependencies
+## Real-time Communication
 
-### Backend
-- Flask + Flask-SocketIO
-- SQLAlchemy + Flask-Migrate
-- JWT Extended
-- Flask-CORS
-- Flask-Caching
-- Flask-Limiter
+### SocketIO Configuration
+- **Backend**: Flask-SocketIO with eventlet async mode
+- **Frontend**: Socket.IO client v4.6.1
+- **CORS**: Configured for localhost:3000
+- **Handlers**: Queue events for real-time updates
 
-### Frontend
-- React 18
-- React Router DOM
-- React Query (TanStack Query)
-- Zustand (state management)
-- Socket.IO Client
-- Tailwind CSS
-- Lucide React (icons)
+## Security Features
 
----
-**Status**: Entry points mapped and documented
+### JWT Authentication
+- **Secret Key**: Environment variable or config fallback
+- **Token Expiry**: 8 hours access, 30 days refresh
+- **Blacklist**: Enabled for token revocation
+- **Error Handlers**: Custom responses for expired/invalid tokens
+
+### Role-Based Access
+- **Protected Routes**: Role-based component protection
+- **Allowed Roles**: Defined per route
+- **Admin Override**: Admin role has access to all routes
