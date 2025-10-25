@@ -187,6 +187,24 @@ export const useSocket = () => {
     }
   }
 
+  const onQueueReordered = (callback) => {
+    if (socketRef.current) {
+      socketRef.current.on('queue_reordered', callback)
+    }
+  }
+
+  const onWalkinAdded = (callback) => {
+    if (socketRef.current) {
+      socketRef.current.on('walkin_added', callback)
+    }
+  }
+
+  const onVisitCancelled = (callback) => {
+    if (socketRef.current) {
+      socketRef.current.on('visit_cancelled', callback)
+    }
+  }
+
   const removeAllListeners = () => {
     if (socketRef.current) {
       socketRef.current.removeAllListeners()
@@ -209,6 +227,9 @@ export const useSocket = () => {
     onAppointmentCreated,
     onAppointmentUpdated,
     onAppointmentCancelled,
+    onQueueReordered,
+    onWalkinAdded,
+    onVisitCancelled,
     removeAllListeners
   }
 }

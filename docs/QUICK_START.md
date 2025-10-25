@@ -1,81 +1,75 @@
-# Medical CRM - Quick Start Guide
+# Quick Start Guide
 
-## 🚀 One-Click Launch
+## First Time Setup
 
-### Option 1: Windows Batch File (Recommended)
-1. Double-click `start_medical_crm.bat`
-2. Wait for setup to complete
-3. Application will open automatically in your browser
+1. **Run Setup**: Double-click `FIRST_TIME_SETUP.bat`
+2. **Wait for completion**: The script will install all dependencies
+3. **Start system**: Run `START_MEDICAL_CRM.bat`
 
-### Option 2: PowerShell Script
-1. Right-click `start_medical_crm.ps1`
-2. Select "Run with PowerShell"
-3. Wait for setup to complete
-4. Application will open automatically in your browser
+## Daily Usage
 
-## 📋 What the Script Does
+1. **Start system**: Double-click `START_MEDICAL_CRM.bat`
+2. **Open browser**: Navigate to http://localhost:3000
+3. **Login**: Use any of the following credentials:
+   - Admin: admin/admin123
+   - Reception: sara_reception/sara123
+   - Doctor: dr_mohamed/doctor123
+   - Doctor: dr_laila/doctor123
+   - Doctor: dr_ahmed/doctor123
 
-1. ✅ Checks Python and Node.js installation
-2. ✅ Creates virtual environment for backend
-3. ✅ Installs all backend dependencies
-4. ✅ Initializes and seeds the database
-5. ✅ Installs frontend dependencies
-6. ✅ Starts backend server (http://localhost:5000)
-7. ✅ Starts frontend server (http://localhost:3000)
-8. ✅ Opens application in your browser
-
-## 🔑 Default Login Credentials
-
-| Role | Username | Password |
-|------|----------|----------|
-| **Admin** | `admin` | `admin123` |
-| **Receptionist** | `sara_reception` | `sara123` |
-| **Doctor** | `dr_mohamed` | `doctor123` |
-
-## 🌐 Application URLs
+## System Access
 
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:5000
-- **API Health Check**: http://localhost:5000/api/health
 
-## 🛠️ Manual Setup (If Needed)
+## User Roles
 
-If the automated script doesn't work, you can set up manually:
+### Admin (admin/admin123)
+- Full system access
+- User management
+- System configuration
 
-### Backend Setup
-```bash
-cd backend
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-python seed.py
-python run.py
-```
+### Reception (sara_reception/sara123)
+- Patient management
+- Appointment booking
+- Queue management
+- Payment processing
 
-### Frontend Setup
-```bash
-cd frontend
-npm install
-npm run dev
-```
+### Doctor (dr_mohamed/doctor123, dr_laila/doctor123, dr_ahmed/doctor123)
+- Patient queue access
+- Visit management
+- Consultation notes
 
-## 🎯 Features Available
+## Features Overview
 
-- ✅ Complete appointment booking system
-- ✅ Patient management
-- ✅ Doctor scheduling
-- ✅ Payment tracking
-- ✅ Real-time dashboard
-- ✅ Multi-role authentication
-- ✅ Queue management
+### Reception Dashboard
+- Quick appointment booking
+- Patient check-in
+- Queue management
+- Payment processing
 
-## 🆘 Troubleshooting
+### Doctor Dashboard
+- Patient queue
+- Visit management
+- Consultation workflow
 
-1. **Python not found**: Install Python 3.8+ from python.org
-2. **Node.js not found**: Install Node.js 16+ from nodejs.org
-3. **Port already in use**: Close other applications using ports 3000 or 5000
-4. **Permission denied**: Run as administrator
+### Real-time Updates
+- Live queue updates
+- Instant notifications
+- Synchronized data
 
-## 📞 Support
+## Troubleshooting
 
-If you encounter any issues, check the console output for error messages and ensure all dependencies are properly installed.
+### System Won't Start
+1. Check if Python and Node.js are installed
+2. Run `FIRST_TIME_SETUP.bat` again
+3. Check console windows for error messages
+
+### Database Issues
+1. Delete `backend/instance/medical_crm.db`
+2. Run `FIRST_TIME_SETUP.bat` again
+
+### Port Conflicts
+- Backend uses port 5000
+- Frontend uses port 3000
+- Close other applications using these ports

@@ -1,130 +1,81 @@
-# Medical CRM - Complete Setup Guide
+# Setup Guide
 
-## 🚀 Quick Start (If Python & Node.js are installed)
+## System Requirements
 
-1. **Double-click `start_medical_crm_simple.bat`**
-2. Wait for setup to complete
-3. Application opens automatically
+### Required Software
+- **Python 3.8+** - [Download from python.org](https://python.org)
+- **Node.js 16+** - [Download from nodejs.org](https://nodejs.org)
+- **Windows 10/11** - For batch file compatibility
 
-## 📋 Prerequisites Installation
+### Hardware Requirements
+- **RAM**: 4GB minimum, 8GB recommended
+- **Storage**: 2GB free space
+- **Network**: Internet connection for initial setup
 
-### Step 1: Install Python
+## Installation Steps
 
-**Option A: Official Python (Recommended)**
-1. Go to https://www.python.org/downloads/
+### 1. Download and Install Python
+1. Go to [python.org](https://python.org)
 2. Download Python 3.8 or newer
-3. **IMPORTANT**: During installation, check "Add Python to PATH"
-4. Restart your computer after installation
+3. **Important**: Check "Add Python to PATH" during installation
+4. Verify installation: Open Command Prompt and run `python --version`
 
-**Option B: Microsoft Store Python**
-1. Open Microsoft Store
-2. Search for "Python 3.11" or newer
-3. Install it
-4. No PATH configuration needed
-
-**Option C: Use our helper**
-1. Double-click `install_python.bat`
-2. Follow the instructions
-
-### Step 2: Install Node.js
-
-1. Go to https://nodejs.org/
-2. Download the LTS version (16.x or newer)
+### 2. Download and Install Node.js
+1. Go to [nodejs.org](https://nodejs.org)
+2. Download the LTS version
 3. Install with default settings
-4. Restart your computer
+4. Verify installation: Open Command Prompt and run `node --version`
 
-### Step 3: Verify Installation
+### 3. Setup Medical CRM
+1. Navigate to the project folder
+2. Double-click `FIRST_TIME_SETUP.bat`
+3. Wait for the setup to complete
+4. The system will be ready to use
 
-Open Command Prompt and test:
-```cmd
-python --version
-node --version
-```
+## Verification
 
-Both should show version numbers.
+After setup, verify the installation:
 
-## 🎯 Running the Application
+1. **Backend**: Check `backend/venv/` folder exists
+2. **Frontend**: Check `frontend/node_modules/` folder exists
+3. **Database**: Check `backend/instance/medical_crm.db` exists
 
-### Method 1: Simple Launcher (Recommended)
-- Double-click `start_medical_crm_simple.bat`
+## Starting the System
 
-### Method 2: Advanced Launcher
-- Double-click `START_MEDICAL_CRM.bat`
+1. Double-click `START_MEDICAL_CRM.bat`
+2. Two console windows will open (backend and frontend)
+3. Open browser to http://localhost:3000
+4. Login with admin/admin123
 
-### Method 3: Manual Setup
-```cmd
-# Backend
-cd backend
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-python seed.py
-python run.py
+## Troubleshooting
 
-# Frontend (in new terminal)
-cd frontend
-npm install
-npm run dev
-```
+### Python Issues
+- **Error**: "Python is not recognized"
+- **Solution**: Reinstall Python with "Add to PATH" option
 
-## 🔑 Login Credentials
+### Node.js Issues
+- **Error**: "Node is not recognized"
+- **Solution**: Reinstall Node.js with default settings
 
-| Role | Username | Password |
-|------|----------|----------|
-| **Admin** | `admin` | `admin123` |
-| **Receptionist** | `sara_reception` | `sara123` |
-| **Doctor** | `dr_mohamed` | `doctor123` |
+### Port Conflicts
+- **Error**: "Port already in use"
+- **Solution**: Close other applications using ports 3000 or 5000
 
-## 🌐 Application URLs
+### Database Issues
+- **Error**: "Database not found"
+- **Solution**: Run `FIRST_TIME_SETUP.bat` again
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:5000
-- **Health Check**: http://localhost:5000/api/health
+## Uninstallation
 
-## 🆘 Troubleshooting
+To completely remove the system:
 
-### Python Not Found
-1. Reinstall Python with "Add to PATH" checked
-2. Restart computer
-3. Try Microsoft Store Python
-4. Manually add Python to PATH
+1. Delete the entire project folder
+2. No system files are modified outside the project folder
+3. Virtual environment and node_modules are contained within the project
 
-### Node.js Not Found
-1. Reinstall Node.js
-2. Restart computer
-3. Check if npm is working: `npm --version`
+## Support
 
-### Port Already in Use
-1. Close other applications using ports 3000 or 5000
-2. Restart computer
-3. Use different ports in configuration
-
-### Frontend Not Loading
-1. Wait 1-2 minutes for Vite to start
-2. Check the frontend terminal window
-3. Refresh the browser page
-4. Try http://localhost:3000 manually
-
-### Backend Errors
-1. Check the backend terminal window
-2. Make sure database is initialized
-3. Check if all dependencies are installed
-4. Try running `python seed.py` manually
-
-## 📞 Support
-
-If you still have issues:
-1. Check the terminal windows for error messages
-2. Make sure you're running from the correct directory
-3. Verify Python and Node.js are properly installed
-4. Try the manual setup method
-
-## ✨ Features
-
-- Complete appointment booking system
-- Patient management
-- Doctor scheduling
-- Payment tracking
-- Real-time dashboard
-- Multi-role authentication
-- Queue management
+For additional help:
+1. Check the console windows for error messages
+2. Verify all requirements are met
+3. Try running `FIRST_TIME_SETUP.bat` again

@@ -105,6 +105,18 @@ def seed_database():
         
         for doctor in doctors:
             db.session.add(doctor)
+        
+        # Add doctor record for admin user
+        admin_doctor = Doctor(
+            name='Dr. Admin',
+            specialty='General Medicine',
+            working_days=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+            working_hours={'start': '09:00', 'end': '17:00'},
+            clinic_id=2,  # Internal Medicine
+            share_percentage=0.7,
+            user_id=users['admin'].id
+        )
+        db.session.add(admin_doctor)
         db.session.commit()
         
         # Create patients
@@ -227,6 +239,52 @@ def seed_database():
         ]
         
         for appointment in appointments:
+            db.session.add(appointment)
+        
+        # Add more confirmed appointments for today (without visits) for testing check-in
+        additional_appointments = [
+            Appointment(
+                booking_id='A-2025-0101-0004',
+                clinic_id=1,  # Dermatology
+                doctor_id=2,  # Dr. Laila
+                patient_id=1,  # Yasmine
+                service_id=2,  # Acne Treatment
+                start_time=datetime.combine(today, datetime.min.time().replace(hour=14)),
+                end_time=datetime.combine(today, datetime.min.time().replace(hour=14, minute=45)),
+                status=AppointmentStatus.CONFIRMED,
+                booking_source=BookingSource.PHONE,
+                created_by=users['sara_reception'].id,
+                notes='Acne treatment appointment'
+            ),
+            Appointment(
+                booking_id='A-2025-0101-0005',
+                clinic_id=2,  # Internal Medicine
+                doctor_id=1,  # Dr. Mohamed
+                patient_id=2,  # Nour
+                service_id=5,  # Blood Pressure Check
+                start_time=datetime.combine(today, datetime.min.time().replace(hour=15)),
+                end_time=datetime.combine(today, datetime.min.time().replace(hour=15, minute=15)),
+                status=AppointmentStatus.CONFIRMED,
+                booking_source=BookingSource.PHONE,
+                created_by=users['sara_reception'].id,
+                notes='Blood pressure monitoring'
+            ),
+            Appointment(
+                booking_id='A-2025-0101-0006',
+                clinic_id=3,  # Dentistry
+                doctor_id=3,  # Dr. Ahmed
+                patient_id=3,  # Fatma
+                service_id=8,  # Tooth Extraction
+                start_time=datetime.combine(today, datetime.min.time().replace(hour=16)),
+                end_time=datetime.combine(today, datetime.min.time().replace(hour=16, minute=30)),
+                status=AppointmentStatus.CONFIRMED,
+                booking_source=BookingSource.PHONE,
+                created_by=users['sara_reception'].id,
+                notes='Tooth extraction appointment'
+            )
+        ]
+        
+        for appointment in additional_appointments:
             db.session.add(appointment)
         db.session.commit()
         

@@ -185,11 +185,18 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
   }
 
   const handleNext = useCallback(() => {
+    console.log('handleNext called:', { currentStep, formData });
     const isValid = validateStep(currentStep)
+    console.log('validateStep result:', isValid);
+    const canProceedResult = canProceed();
+    console.log('canProceed result:', canProceedResult);
     if (isValid && currentStep < 5) {
+      console.log('Moving to next step:', currentStep + 1);
       setCurrentStep(currentStep + 1)
+    } else {
+      console.log('Cannot proceed:', { isValid, currentStep, canProceedResult });
     }
-  }, [currentStep])
+  }, [currentStep, formData])
 
   const handlePrevious = useCallback(() => {
     if (currentStep > 1) {
@@ -212,8 +219,12 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
   }
 
   const canProceed = () => {
+    console.log('canProceed check:', { currentStep, formData, clinic_id: formData.clinic_id, clinic_id_type: typeof formData.clinic_id });
     switch (currentStep) {
-      case 1: return !!formData.clinic_id
+      case 1: 
+        const step1Result = !!formData.clinic_id;
+        console.log('Step 1 canProceed:', step1Result);
+        return step1Result;
       case 2: return !!formData.doctor_id
       case 3: return !!formData.patient_id
       case 4: return !!formData.service_id && !!formData.start_time
@@ -245,11 +256,16 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
             }`}
             onClick={() => {
               console.log('Clinic clicked:', clinic);
-              setFormData(prev => ({ 
-                ...prev, 
-                clinic_id: clinic.id,
-                selectedClinic: clinic
-              }));
+              console.log('Clinic ID type:', typeof clinic.id, 'Value:', clinic.id);
+              setFormData(prev => {
+                const newData = { 
+                  ...prev, 
+                  clinic_id: clinic.id,
+                  selectedClinic: clinic
+                };
+                console.log('Form data after clinic selection:', newData);
+                return newData;
+              });
             }}
           >
             <div className="flex items-center space-x-3">
@@ -293,7 +309,7 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
                 <User className="w-5 h-5 text-green-600" />
               </div>
               <div>
-                <h4 className="font-medium">Dr. {doctor.name}</h4>
+                <h4 className="font-medium">{doctor.name}</h4>
                 <p className="text-sm text-gray-600">{doctor.specialty}</p>
                 <p className="text-xs text-gray-500">
                   Working Days: {doctor.working_days?.join(', ') || 'Not specified'}
@@ -670,7 +686,7 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
               onClick={handleNext}
               disabled={!canProceed()}
             >
-              Next
+              Next {!canProceed() && `(disabled - clinic_id: ${formData.clinic_id})`}
               <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           )}

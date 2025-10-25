@@ -21,7 +21,7 @@ class BookingService:
         end_hour = int(working_hours['end'].split(':')[0])
         
         # Generate time slots
-        slots = get_time_slots(start_hour, end_hour, 30)  # 30-minute slots
+        slots = get_time_slots(start_hour, end_hour, 30, date)  # 30-minute slots
         
         # Get existing appointments for the date
         existing_appointments = db.session.query(Appointment).filter(

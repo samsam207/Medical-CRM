@@ -11,17 +11,20 @@ from datetime import datetime
 class QueueService:
     """Service for handling queue management logic"""
     
-    def get_clinic_queue(self, clinic_id):
-        """Get live queue for a clinic"""
-        # Get all visits for the clinic from the last 7 days (including today)
-        # This ensures we show existing data while still being reasonable
+    def get_clinic_queue(self, clinic_id, start_date=None, end_date=None):
+        """Get live queue for a clinic with optional date range filtering"""
         from datetime import timedelta
-        today = datetime.now().date()
-        week_ago = today - timedelta(days=7)
+        
+        # Default to today if no dates provided
+        if not start_date:
+            start_date = datetime.now().date()
+        if not end_date:
+            end_date = start_date
         
         visits = db.session.query(Visit).filter(
             Visit.clinic_id == clinic_id,
-            db.func.date(Visit.created_at) >= week_ago
+            db.func.date(Visit.created_at) >= start_date,
+            db.func.date(Visit.created_at) <= end_date
         ).order_by(Visit.queue_number).all()
         
         # Group by status
@@ -60,16 +63,20 @@ class QueueService:
         
         return queue_data
     
-    def get_doctor_queue(self, doctor_id):
-        """Get live queue for a doctor"""
-        # Get all visits for the doctor from the last 7 days (including today)
+    def get_doctor_queue(self, doctor_id, start_date=None, end_date=None):
+        """Get live queue for a doctor with optional date range filtering"""
         from datetime import timedelta
-        today = datetime.now().date()
-        week_ago = today - timedelta(days=7)
+        
+        # Default to today if no dates provided
+        if not start_date:
+            start_date = datetime.now().date()
+        if not end_date:
+            end_date = start_date
         
         visits = db.session.query(Visit).filter(
             Visit.doctor_id == doctor_id,
-            db.func.date(Visit.created_at) >= week_ago
+            db.func.date(Visit.created_at) >= start_date,
+            db.func.date(Visit.created_at) <= end_date
         ).order_by(Visit.queue_number).all()
         
         # Group by status
@@ -197,18 +204,29 @@ class QueueService:
         
         return visit
     
-    def complete_consultation(self, visit_id):
-        """Complete consultation and mark as pending payment"""
-        visit = Visit.query.get(visit_id)
+    def complete_consultation(self, visit_id, notes=''):
+        """Complete consultation and mark as completed"""
+        # Use filter_by instead of get to avoid primary key issues
+        visit = Visit.query.filter_by(id=visit_id).first()
         if not visit:
-            raise ValueError("Visit not found")
+            raise ValueError(f"Visit not found: {visit_id}")
         
         if visit.status != VisitStatus.IN_PROGRESS:
-            raise ValueError("Consultation must be in progress to complete")
+            raise ValueError(f"Consultation must be in progress to complete. Current status: {visit.status}")
         
-        visit.status = VisitStatus.PENDING_PAYMENT
+        visit.status = VisitStatus.COMPLETED
         visit.end_time = datetime.utcnow()
-        db.session.commit()
+        
+        # Update appointment status if visit has an appointment
+        if visit.appointment_id and visit.appointment:
+            from app.models.appointment import AppointmentStatus
+            visit.appointment.status = AppointmentStatus.COMPLETED
+        
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            raise ValueError(f"Database error: {str(e)}")
         
         return visit
     
@@ -257,3 +275,180 @@ class QueueService:
         ).scalar()
         
         return (max_queue or 0) + 1
+    
+    def get_upcoming_appointments(self, date, clinic_id=None):
+        """Get confirmed appointments for a specific date that haven't been checked in"""
+        from app.models.appointment import AppointmentStatus
+        
+        query = db.session.query(Appointment).filter(
+            db.func.date(Appointment.start_time) == date,
+            Appointment.status == AppointmentStatus.CONFIRMED,
+            ~db.session.query(Visit).filter(Visit.appointment_id == Appointment.id).exists()
+        )
+        
+        if clinic_id:
+            query = query.filter(Appointment.clinic_id == clinic_id)
+        
+        appointments = query.order_by(Appointment.start_time).all()
+        
+        # Convert to dict format
+        appointments_data = []
+        for apt in appointments:
+            appointments_data.append({
+                'id': apt.id,
+                'booking_id': apt.booking_id,
+                'patient_name': apt.patient.name,
+                'patient_phone': apt.patient.phone,
+                'doctor_name': apt.doctor.name,
+                'clinic_name': apt.clinic.name,
+                'service_name': apt.service.name,
+                'start_time': apt.start_time.isoformat(),
+                'end_time': apt.end_time.isoformat(),
+                'notes': apt.notes
+            })
+        
+        return appointments_data
+    
+    def reorder_queue(self, visit_id, new_position):
+        """Reorder queue by moving a visit to a new position"""
+        visit = Visit.query.get(visit_id)
+        if not visit:
+            raise ValueError("Visit not found")
+        
+        if visit.status != VisitStatus.WAITING:
+            raise ValueError("Only waiting patients can be reordered")
+        
+        # Get all waiting visits for the same clinic on the same day
+        today = datetime.now().date()
+        waiting_visits = db.session.query(Visit).filter(
+            Visit.clinic_id == visit.clinic_id,
+            Visit.status == VisitStatus.WAITING,
+            db.func.date(Visit.created_at) == today,
+            Visit.id != visit_id
+        ).order_by(Visit.queue_number).all()
+        
+        # Insert the visit at the new position
+        if new_position <= 0:
+            new_position = 1
+        if new_position > len(waiting_visits) + 1:
+            new_position = len(waiting_visits) + 1
+        
+        # Update queue numbers
+        new_queue_number = new_position
+        for i, waiting_visit in enumerate(waiting_visits):
+            if i + 1 >= new_position:
+                waiting_visit.queue_number = i + 2
+            else:
+                waiting_visit.queue_number = i + 1
+        
+        visit.queue_number = new_queue_number
+        db.session.commit()
+        
+        return visit
+    
+    def cancel_visit(self, visit_id, reason="Cancelled by receptionist"):
+        """Cancel a visit and remove from queue"""
+        visit = Visit.query.get(visit_id)
+        if not visit:
+            raise ValueError("Visit not found")
+        
+        # Update visit status
+        visit.status = VisitStatus.NO_SHOW
+        visit.notes = f"Cancelled: {reason}"
+        
+        # Update appointment status if exists
+        if visit.appointment:
+            from app.models.appointment import AppointmentStatus
+            visit.appointment.status = AppointmentStatus.CANCELLED
+        
+        db.session.commit()
+        
+        return visit
+    
+    def create_walkin_visit(self, patient_id, clinic_id, service_id, doctor_id, notes=""):
+        """Create walk-in visit with automatic queue number assignment"""
+        # Get next queue number
+        queue_number = self.get_next_queue_number(clinic_id)
+        
+        # Create visit
+        from app.models.visit import VisitType
+        
+        visit = Visit(
+            appointment_id=None,
+            doctor_id=doctor_id,
+            patient_id=patient_id,
+            service_id=service_id,
+            clinic_id=clinic_id,
+            check_in_time=datetime.utcnow(),
+            visit_type=VisitType.WALK_IN,
+            queue_number=queue_number,
+            status=VisitStatus.WAITING,
+            notes=notes
+        )
+        
+        db.session.add(visit)
+        db.session.commit()
+        
+        return visit
+    
+    def get_queue_statistics(self, clinic_id, date=None):
+        """Get queue statistics for a clinic on a specific date"""
+        if not date:
+            date = datetime.now().date()
+        
+        try:
+            # Get all visits for the date
+            visits = db.session.query(Visit).filter(
+                Visit.clinic_id == clinic_id,
+                db.func.date(Visit.created_at) == date
+            ).all()
+        except Exception as e:
+            # If there's an error with the query, return empty statistics
+            return {
+                'date': date.isoformat(),
+                'total_appointments': 0,
+                'waiting_count': 0,
+                'called_count': 0,
+                'in_progress_count': 0,
+                'completed_count': 0,
+                'avg_wait_time_minutes': 0,
+                'avg_consultation_time_minutes': 0
+            }
+        
+        # Calculate statistics
+        total_appointments = len(visits)
+        waiting_count = len([v for v in visits if v.status == VisitStatus.WAITING])
+        called_count = len([v for v in visits if v.status == VisitStatus.CALLED])
+        in_progress_count = len([v for v in visits if v.status == VisitStatus.IN_PROGRESS])
+        completed_count = len([v for v in visits if v.status == VisitStatus.COMPLETED])
+        
+        # Calculate average wait time (for completed visits)
+        completed_visits = [v for v in visits if v.status == VisitStatus.COMPLETED and v.check_in_time and v.start_time]
+        avg_wait_time = 0
+        if completed_visits:
+            total_wait = sum([
+                (v.start_time - v.check_in_time).total_seconds() / 60 
+                for v in completed_visits
+            ])
+            avg_wait_time = total_wait / len(completed_visits)
+        
+        # Calculate average consultation time
+        consultation_visits = [v for v in visits if v.status == VisitStatus.COMPLETED and v.start_time and v.end_time]
+        avg_consultation_time = 0
+        if consultation_visits:
+            total_consultation = sum([
+                (v.end_time - v.start_time).total_seconds() / 60 
+                for v in consultation_visits
+            ])
+            avg_consultation_time = total_consultation / len(consultation_visits)
+        
+        return {
+            'date': date.isoformat(),
+            'total_appointments': total_appointments,
+            'waiting_count': waiting_count,
+            'called_count': called_count,
+            'in_progress_count': in_progress_count,
+            'completed_count': completed_count,
+            'avg_wait_time_minutes': round(avg_wait_time, 1),
+            'avg_consultation_time_minutes': round(avg_consultation_time, 1)
+        }

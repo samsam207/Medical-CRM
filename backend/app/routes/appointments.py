@@ -63,10 +63,9 @@ def get_appointments():
         except ValueError:
             return jsonify({'message': f'Invalid status: {status}. Valid values: {[s.value for s in AppointmentStatus]}'}), 400
     
-    # Filter out appointments that already have visits (already checked in)
-    # Use a subquery to find appointments without visits
-    from sqlalchemy import and_
-    query = query.filter(~db.session.query(Visit).filter(Visit.appointment_id == Appointment.id).exists())
+    # Note: Removed the filter that excluded appointments with visits
+    # This was causing appointments to not appear on the appointments page
+    # All appointments should be visible regardless of visit status
     
     # Order by start time
     query = query.order_by(Appointment.start_time.desc())

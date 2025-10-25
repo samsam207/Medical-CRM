@@ -7,6 +7,7 @@ const useAuthStore = create(
     (set, get) => ({
       user: null,
       token: null,
+      refreshToken: null,
       isAuthenticated: false,
       isLoading: false,
       error: null,
@@ -15,7 +16,7 @@ const useAuthStore = create(
         set({ isLoading: true, error: null })
         try {
           const response = await api.post('/auth/login', credentials)
-          const { access_token, user } = response.data
+          const { access_token, refresh_token, user } = response.data
           // Normalize role to lowercase for consistent frontend checks
           const normalizedUser = {
             ...user,
@@ -28,6 +29,7 @@ const useAuthStore = create(
           set({
             user: normalizedUser,
             token: access_token,
+            refreshToken: refresh_token,
             isAuthenticated: true,
             isLoading: false,
             error: null
@@ -39,6 +41,7 @@ const useAuthStore = create(
           set({
             user: null,
             token: null,
+            refreshToken: null,
             isAuthenticated: false,
             isLoading: false,
             error: errorMessage
@@ -60,6 +63,7 @@ const useAuthStore = create(
           set({
             user: null,
             token: null,
+            refreshToken: null,
             isAuthenticated: false,
             isLoading: false,
             error: null
@@ -69,7 +73,16 @@ const useAuthStore = create(
 
       refreshToken: async () => {
         try {
-          const response = await api.post('/auth/refresh')
+          const { refreshToken } = get()
+          if (!refreshToken) {
+            throw new Error('No refresh token available')
+          }
+
+          const response = await api.post('/auth/refresh', {}, {
+            headers: {
+              'Authorization': `Bearer ${refreshToken}`
+            }
+          })
           const { access_token } = response.data
           
           // Update token in API client
@@ -105,6 +118,7 @@ const useAuthStore = create(
       partialize: (state) => ({
         user: state.user,
         token: state.token,
+        refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated
       })
     }

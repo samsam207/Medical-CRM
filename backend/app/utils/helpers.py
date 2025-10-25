@@ -66,11 +66,14 @@ def get_working_days_list():
     """Get list of working days"""
     return ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
-def get_time_slots(start_hour=9, end_hour=17, slot_duration=30):
+def get_time_slots(start_hour=9, end_hour=17, slot_duration=30, date=None):
     """Generate time slots for appointment booking"""
     slots = []
-    current_time = datetime.now().replace(hour=start_hour, minute=0, second=0, microsecond=0)
-    end_time = datetime.now().replace(hour=end_hour, minute=0, second=0, microsecond=0)
+    if date is None:
+        date = datetime.now().date()
+    
+    current_time = datetime.combine(date, datetime.min.time().replace(hour=start_hour, minute=0, second=0, microsecond=0))
+    end_time = datetime.combine(date, datetime.min.time().replace(hour=end_hour, minute=0, second=0, microsecond=0))
     
     while current_time < end_time:
         slots.append({
