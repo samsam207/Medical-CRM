@@ -185,6 +185,7 @@ class QueueService:
             raise ValueError("Only waiting patients can be called")
         
         visit.status = VisitStatus.CALLED
+        visit.called_time = datetime.utcnow()
         db.session.commit()
         
         return visit

@@ -25,6 +25,7 @@ class Visit(db.Model):
     check_in_time = db.Column(db.DateTime, nullable=False)
     start_time = db.Column(db.DateTime)
     end_time = db.Column(db.DateTime)
+    called_time = db.Column(db.DateTime)
     status = db.Column(db.Enum(VisitStatus), default=VisitStatus.WAITING, nullable=False, index=True)
     visit_type = db.Column(db.Enum(VisitType), nullable=False)
     queue_number = db.Column(db.Integer, nullable=False)
@@ -42,7 +43,7 @@ class Visit(db.Model):
     )
     
     def __init__(self, doctor_id, patient_id, service_id, clinic_id, check_in_time, 
-                 visit_type, queue_number, appointment_id=None, start_time=None, end_time=None, status=None):
+                 visit_type, queue_number, appointment_id=None, start_time=None, end_time=None, status=None, called_time=None):
         self.doctor_id = doctor_id
         self.patient_id = patient_id
         self.service_id = service_id
@@ -53,6 +54,7 @@ class Visit(db.Model):
         self.appointment_id = appointment_id
         self.start_time = start_time
         self.end_time = end_time
+        self.called_time = called_time
         if status:
             self.status = status
     
@@ -68,6 +70,7 @@ class Visit(db.Model):
             'check_in_time': self.check_in_time.isoformat() if self.check_in_time else None,
             'start_time': self.start_time.isoformat() if self.start_time else None,
             'end_time': self.end_time.isoformat() if self.end_time else None,
+            'called_time': self.called_time.isoformat() if self.called_time else None,
             'status': self.status.value if self.status else None,
             'visit_type': self.visit_type.value if self.visit_type else None,
             'queue_number': self.queue_number,
