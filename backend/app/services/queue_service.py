@@ -206,26 +206,45 @@ class QueueService:
     
     def complete_consultation(self, visit_id, notes=''):
         """Complete consultation and mark as completed"""
+        from flask import current_app
+        
+        # Log the attempt
+        current_app.logger.info(f"Starting completion for visit_id={visit_id}")
+        
         # Use filter_by instead of get to avoid primary key issues
         visit = Visit.query.filter_by(id=visit_id).first()
         if not visit:
+            current_app.logger.error(f"Visit not found: {visit_id}")
             raise ValueError(f"Visit not found: {visit_id}")
         
+        current_app.logger.info(f"Visit found: id={visit.id}, status={visit.status}, appointment_id={visit.appointment_id}")
+        
+        # Check if visit is in correct status
         if visit.status != VisitStatus.IN_PROGRESS:
+            current_app.logger.error(f"Invalid status for completion: current={visit.status}, expected=IN_PROGRESS")
             raise ValueError(f"Consultation must be in progress to complete. Current status: {visit.status}")
         
+        # Update visit
         visit.status = VisitStatus.COMPLETED
         visit.end_time = datetime.utcnow()
         
         # Update appointment status if visit has an appointment
-        if visit.appointment_id and visit.appointment:
+        if visit.appointment_id:
             from app.models.appointment import AppointmentStatus
-            visit.appointment.status = AppointmentStatus.COMPLETED
+            appointment = Appointment.query.get(visit.appointment_id)
+            if appointment:
+                appointment.status = AppointmentStatus.COMPLETED
+                current_app.logger.info(f"Updated appointment {appointment.id} to COMPLETED")
         
+        # Commit changes
         try:
             db.session.commit()
+            current_app.logger.info(f"Successfully completed visit {visit.id}")
         except Exception as e:
             db.session.rollback()
+            current_app.logger.error(f"Database error completing visit {visit.id}: {str(e)}")
+            import traceback
+            current_app.logger.error(traceback.format_exc())
             raise ValueError(f"Database error: {str(e)}")
         
         return visit
