@@ -56,8 +56,8 @@ const WalkInModal = ({ isOpen, onClose, onSuccess }) => {
     queryKey: ['services', formData.clinic_id],
     queryFn: async () => {
       if (!formData.clinic_id) return []
-      const result = await servicesApi.getServices()
-      return result?.services?.filter(service => service.clinic_id === parseInt(formData.clinic_id)) || []
+      const result = await clinicsApi.getClinicServices(formData.clinic_id)
+      return result?.services || []
     },
     enabled: !!formData.clinic_id
   })
