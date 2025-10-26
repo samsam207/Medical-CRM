@@ -28,7 +28,7 @@ const ReceptionDashboard = () => {
   const { data: stats, isLoading, error, refetch } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: dashboardApi.getStats,
-    refetchInterval: 30000 // Refresh every 30 seconds
+    refetchInterval: 10000 // Refresh every 10 seconds
   })
 
   // Fetch clinics for selection

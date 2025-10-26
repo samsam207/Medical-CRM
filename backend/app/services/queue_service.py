@@ -470,17 +470,32 @@ class QueueService:
     
     def get_queue_statistics(self, clinic_id, date=None):
         """Get queue statistics for a clinic on a specific date"""
+        from flask import current_app
+        
         if not date:
             date = datetime.now().date()
         
         try:
+            # Validate clinic_id
+            if clinic_id is None:
+                raise ValueError("clinic_id is required")
+            
             # Get all visits for the date
             visits = db.session.query(Visit).filter(
                 Visit.clinic_id == clinic_id,
                 db.func.date(Visit.created_at) == date
             ).all()
+            
+            current_app.logger.info(f"Retrieved {len(visits)} visits for clinic {clinic_id} on {date}")
+        except ValueError as e:
+            current_app.logger.error(f"Validation error in get_queue_statistics: {str(e)}")
+            raise
         except Exception as e:
-            # If there's an error with the query, return empty statistics
+            # Log specific error
+            current_app.logger.error(f"Database error in get_queue_statistics: {str(e)}")
+            import traceback
+            current_app.logger.error(traceback.format_exc())
+            # Return empty stats instead of raising
             return {
                 'date': date.isoformat(),
                 'total_appointments': 0,
@@ -489,7 +504,8 @@ class QueueService:
                 'in_progress_count': 0,
                 'completed_count': 0,
                 'avg_wait_time_minutes': 0,
-                'avg_consultation_time_minutes': 0
+                'avg_consultation_time_minutes': 0,
+                'error': str(e)
             }
         
         # Calculate statistics
