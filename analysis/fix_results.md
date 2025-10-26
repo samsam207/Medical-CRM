@@ -104,17 +104,56 @@ Or restart the backend server - it may auto-run migrations.
 
 ---
 
-## Fix #4: Statistics API Errors (PENDING)
+## Fix #4: Statistics API Errors ✅ APPLIED
 
-**Status:** PENDING  
-**Priority:** LOW
+**File Modified:** `backend/app/services/queue_service.py`  
+**Lines Changed:** ~10 lines added (better error handling)  
+**Commit:** `cba7d82`
+
+### Changes Applied:
+- Added specific error logging for validation and database errors
+- Added traceback logging for debugging
+- Returns error details in response instead of silently failing
+- Validates clinic_id before querying
+
+### Testing Required:
+- [ ] Load dashboard
+- [ ] Check console/network for stats API errors
+- [ ] Verify stats still display even if errors occur
+- [ ] Check logs for detailed error messages
+
+### Risk Assessment:
+**Risk Level:** LOW  
+**Impact:** Better error visibility and debugging  
+**Rollback:** Revert 10 lines
+
+### Status: 
+✅ CODE APPLIED - AWAITING TEST
 
 ---
 
-## Fix #5: Dashboard Stale Counters (PENDING)
+## Fix #5: Dashboard Stale Counters ✅ APPLIED
 
-**Status:** PENDING  
-**Priority:** LOW
+**File Modified:** `frontend/src/pages/ReceptionDashboard.jsx`  
+**Line Changed:** 31 (refetchInterval: 30000 → 10000)  
+**Commit:** `cba7d82`
+
+### Changes Applied:
+- Reduced refetch interval from 30 seconds to 10 seconds
+- Counters will update more frequently
+
+### Testing Required:
+- [ ] Create appointment in one tab
+- [ ] Observe counter update in another tab (should update within 10s)
+- [ ] Verify SocketIO real-time updates still work faster
+
+### Risk Assessment:
+**Risk Level:** LOW  
+**Impact:** Minor - slightly more frequent API calls (once every 10s vs 30s)  
+**Rollback:** Change 1 line back to 30000
+
+### Status: 
+✅ CODE APPLIED - AWAITING TEST
 
 ---
 
