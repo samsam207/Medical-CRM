@@ -30,6 +30,33 @@ export const queueApi = {
     return response.data
   },
 
+  // Get all appointments for a date (including checked-in ones)
+  getAllAppointmentsForDate: async (date, clinicId = null) => {
+    const params = { date }
+    if (clinicId) params.clinic_id = clinicId
+    
+    const response = await apiClient.get('/queue/appointments', { params })
+    return response.data
+  },
+
+  // Get queue organized by phases
+  getQueuePhases: async (clinicId, date) => {
+    const response = await apiClient.get(`/queue/phases/${clinicId}`, {
+      params: { date }
+    })
+    return response.data
+  },
+
+  // Move patient between phases
+  movePatientPhase: async (visitId, fromPhase, toPhase) => {
+    const response = await apiClient.post('/queue/phases/move', {
+      visit_id: visitId,
+      from_phase: fromPhase,
+      to_phase: toPhase
+    })
+    return response.data
+  },
+
   // Get queue statistics
   getQueueStatistics: async (clinicId, date = null) => {
     const params = {}

@@ -378,6 +378,40 @@ def get_upcoming_appointments():
         'clinic_id': clinic_id
     }), 200
 
+@queue_bp.route('/appointments', methods=['GET'])
+@jwt_required()
+def get_all_appointments_for_date():
+    """Get all appointments for a specific date (including checked-in ones)"""
+    current_user_id = int(get_jwt_identity())
+    user = User.query.get(current_user_id)
+    
+    if not user:
+        return jsonify({'message': 'User not found'}), 401
+    
+    if user.role not in [UserRole.RECEPTIONIST, UserRole.ADMIN]:
+        return jsonify({'message': 'Insufficient permissions'}), 403
+    
+    # Get parameters
+    date_str = request.args.get('date')
+    clinic_id = request.args.get('clinic_id', type=int)
+    
+    if not date_str:
+        return jsonify({'message': 'date parameter is required'}), 400
+    
+    try:
+        date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'message': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    
+    queue_service = QueueService()
+    appointments = queue_service.get_all_appointments_for_date(date, clinic_id)
+    
+    return jsonify({
+        'appointments': appointments,
+        'date': date.isoformat(),
+        'clinic_id': clinic_id
+    }), 200
+
 @queue_bp.route('/reorder', methods=['PUT'])
 @receptionist_required
 def reorder_queue(current_user):
@@ -484,6 +518,143 @@ def cancel_visit(current_user):
         
     except ValueError as e:
         return jsonify({'message': str(e)}), 400
+
+@queue_bp.route('/phases/<int:clinic_id>', methods=['GET'])
+@jwt_required()
+def get_queue_phases(clinic_id):
+    """Get queue organized by 4 phases for the selected date"""
+    current_user_id = int(get_jwt_identity())
+    user = User.query.get(current_user_id)
+    
+    if not user:
+        return jsonify({'message': 'User not found'}), 401
+    
+    # Check if user has access to this clinic
+    if user.role == UserRole.DOCTOR:
+        doctor = Doctor.query.filter_by(user_id=user.id).first()
+        if not doctor or doctor.clinic_id != clinic_id:
+            return jsonify({'message': 'Access denied to this clinic'}), 403
+    elif user.role not in [UserRole.RECEPTIONIST, UserRole.ADMIN]:
+        return jsonify({'message': 'Insufficient permissions'}), 403
+    
+    # Get date parameter
+    date_str = request.args.get('date')
+    if not date_str:
+        return jsonify({'message': 'Date parameter is required'}), 400
+    
+    try:
+        selected_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'message': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    
+    try:
+        queue_service = QueueService()
+        
+        # Get all appointments for the selected date
+        appointments = queue_service.get_all_appointments_for_date(selected_date, clinic_id)
+        
+        # Organize into 4 phases
+        phases = {
+            'appointments_today': [],  # Scheduled appointments
+            'waiting': [],            # Checked in, waiting
+            'with_doctor': [],        # In progress
+            'completed': []           # Completed
+        }
+        
+        for apt in appointments:
+            queue_phase = apt.get('queue_phase', 'appointments_today')
+            
+            if queue_phase == 'appointments_today':
+                phases['appointments_today'].append(apt)
+            elif queue_phase == 'waiting':
+                phases['waiting'].append(apt)
+            elif queue_phase == 'with_doctor':
+                phases['with_doctor'].append(apt)
+            elif queue_phase == 'completed':
+                phases['completed'].append(apt)
+        
+        # Sort appointments by time
+        for phase in phases.values():
+            phase.sort(key=lambda x: x.get('start_time', ''))
+        
+        return jsonify({
+            'phases': phases,
+            'date': selected_date.isoformat(),
+            'clinic_id': clinic_id
+        }), 200
+        
+    except Exception as e:
+        from flask import current_app
+        current_app.logger.error(f"Error getting queue phases: {str(e)}")
+        return jsonify({'message': f'Error getting queue phases: {str(e)}'}), 500
+
+@queue_bp.route('/phases/move', methods=['POST'])
+@receptionist_required
+def move_patient_phase(current_user):
+    """Move a patient between phases"""
+    from flask import current_app
+    data = request.get_json()
+    
+    visit_id = data.get('visit_id')
+    from_phase = data.get('from_phase')
+    to_phase = data.get('to_phase')
+    
+    if not all([visit_id, from_phase, to_phase]):
+        return jsonify({'message': 'visit_id, from_phase, and to_phase are required'}), 400
+    
+    try:
+        queue_service = QueueService()
+        
+        # Map phase names to visit statuses
+        phase_to_status = {
+            'appointments_today': 'scheduled',
+            'waiting': 'waiting', 
+            'with_doctor': 'in_progress',
+            'completed': 'completed'
+        }
+        
+        new_status = phase_to_status.get(to_phase)
+        if not new_status:
+            return jsonify({'message': 'Invalid phase'}), 400
+        
+        # Update visit status based on the phase
+        visit = Visit.query.filter_by(id=visit_id).first()
+        if not visit:
+            return jsonify({'message': 'Visit not found'}), 404
+        
+        # Update visit status based on the new phase
+        if new_status == 'scheduled':
+            # If moving back to appointments_today, we might need to create a visit
+            # For now, just update the status
+            visit.status = VisitStatus.WAITING
+        elif new_status == 'waiting':
+            visit.status = VisitStatus.WAITING
+        elif new_status == 'in_progress':
+            visit.status = VisitStatus.IN_PROGRESS
+            if not visit.start_time:
+                visit.start_time = datetime.utcnow()
+        elif new_status == 'completed':
+            visit.status = VisitStatus.COMPLETED
+            if not visit.end_time:
+                visit.end_time = datetime.utcnow()
+        
+        db.session.commit()
+        
+        # Emit real-time updates
+        queue_data = queue_service.get_clinic_queue(visit.clinic_id)
+        socketio.emit('queue_updated', queue_data, room=f'clinic_{visit.clinic_id}')
+        
+        doctor_queue_data = queue_service.get_doctor_queue(visit.doctor_id)
+        socketio.emit('queue_updated', doctor_queue_data, room=f'doctor_{visit.doctor_id}')
+        
+        return jsonify({
+            'message': 'Patient moved successfully',
+            'visit': visit.to_dict()
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error moving patient phase: {str(e)}")
+        return jsonify({'message': f'Error moving patient: {str(e)}'}), 500
 
 @queue_bp.route('/statistics/<int:clinic_id>', methods=['GET'])
 @jwt_required()

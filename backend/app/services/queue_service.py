@@ -308,6 +308,63 @@ class QueueService:
             })
         
         return appointments_data
+
+    def get_all_appointments_for_date(self, date, clinic_id=None):
+        """Get all appointments for a specific date organized by queue phase"""
+        from app.models.appointment import AppointmentStatus
+        
+        # Get all appointments for the date (confirmed and completed)
+        query = db.session.query(Appointment).filter(
+            db.func.date(Appointment.start_time) == date,
+            Appointment.status.in_([AppointmentStatus.CONFIRMED, AppointmentStatus.COMPLETED])
+        )
+        
+        if clinic_id:
+            query = query.filter(Appointment.clinic_id == clinic_id)
+        
+        appointments = query.order_by(Appointment.start_time).all()
+        
+        # Convert to dict format with proper queue phase mapping
+        appointments_data = []
+        for apt in appointments:
+            # Check if appointment has a visit
+            visit = Visit.query.filter_by(appointment_id=apt.id).first()
+            
+            if visit:
+                # Map visit status to queue phase
+                visit_status = visit.status.value.lower()
+                if visit_status == 'waiting':
+                    queue_phase = 'waiting'
+                elif visit_status == 'called':
+                    queue_phase = 'waiting'  # Called patients are still in waiting phase
+                elif visit_status == 'in_progress':
+                    queue_phase = 'with_doctor'
+                elif visit_status == 'completed':
+                    queue_phase = 'completed'
+                else:
+                    queue_phase = 'appointments_today'
+            else:
+                # No visit means it's a scheduled appointment
+                queue_phase = 'appointments_today'
+                visit_status = 'scheduled'
+            
+            appointments_data.append({
+                'id': apt.id,
+                'booking_id': apt.booking_id,
+                'patient_name': apt.patient.name,
+                'patient_phone': apt.patient.phone,
+                'doctor_name': apt.doctor.name,
+                'clinic_name': apt.clinic.name,
+                'service_name': apt.service.name,
+                'start_time': apt.start_time.isoformat(),
+                'end_time': apt.end_time.isoformat(),
+                'notes': apt.notes,
+                'visit_status': visit_status,
+                'queue_phase': queue_phase,
+                'visit_id': visit.id if visit else None
+            })
+        
+        return appointments_data
     
     def reorder_queue(self, visit_id, new_position):
         """Reorder queue by moving a visit to a new position"""
