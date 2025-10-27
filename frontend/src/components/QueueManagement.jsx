@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { 
   Calendar, 
@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import { queueApi } from '../api/queue'
 import { useSocket } from '../hooks/useSocket'
+import { useMutationWithRefetch } from '../hooks/useMutationWithRefetch'
 import Button from './common/Button'
 import Card from './common/Card'
 import Badge from './common/Badge'
@@ -28,6 +29,7 @@ const QueueManagement = ({ onQueueUpdate }) => {
   const [selectedClinic, setSelectedClinic] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
   const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [selectedAppointmentForPayment, setSelectedAppointmentForPayment] = useState(null)
   const [draggedItem, setDraggedItem] = useState(null)
   const [dragOverPhase, setDragOverPhase] = useState(null)
 
@@ -41,14 +43,23 @@ const QueueManagement = ({ onQueueUpdate }) => {
     refetchInterval: 30000, // Refetch every 30 seconds
   })
 
+  // Check-in patient mutation
+  const checkinPatientMutation = useMutationWithRefetch({
+    mutationFn: (appointmentId) => queueApi.checkinPatient(appointmentId),
+    queryKeys: [['queue-phases'], ['dashboard-stats']],
+    onSuccessMessage: 'Patient checked in successfully',
+    onErrorMessage: 'Failed to check in patient',
+    onSuccessCallback: () => onQueueUpdate?.()
+  })
+
   // Move patient mutation
-  const movePatientMutation = useMutation({
+  const movePatientMutation = useMutationWithRefetch({
     mutationFn: ({ visitId, fromPhase, toPhase }) => 
       queueApi.movePatientPhase(visitId, fromPhase, toPhase),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['queue-phases'])
-      onQueueUpdate?.()
-    }
+    queryKeys: [['queue-phases'], ['dashboard-stats']],
+    onSuccessMessage: 'Patient moved successfully',
+    onErrorMessage: 'Failed to move patient',
+    onSuccessCallback: () => onQueueUpdate?.()
   })
 
   // Phase configurations
@@ -162,7 +173,11 @@ const QueueManagement = ({ onQueueUpdate }) => {
   // Handle payment modal
   const handleProcessPayment = () => {
     setShowPaymentModal(false)
-    navigate('/payments')
+    if (selectedAppointmentForPayment && selectedAppointmentForPayment.payment_id) {
+      navigate(`/payments?paymentId=${selectedAppointmentForPayment.payment_id}`)
+    } else {
+      navigate('/payments')
+    }
   }
 
   const handleSkipPayment = () => {
@@ -352,11 +367,17 @@ const QueueManagement = ({ onQueueUpdate }) => {
                       size="sm"
                           className="w-full mt-2 bg-blue-600 hover:bg-blue-700"
                           onClick={() => {
-                            movePatientMutation.mutate({
-                              visitId: appointment.visit_id,
-                              fromPhase: 'appointments_today',
-                              toPhase: 'waiting'
-                            })
+                            // If no visit_id, this is an appointment without a visit yet - check in first
+                            if (!appointment.visit_id) {
+                              checkinPatientMutation.mutate(appointment.id)
+                            } else {
+                              // If visit_id exists, move directly to waiting
+                              movePatientMutation.mutate({
+                                visitId: appointment.visit_id,
+                                fromPhase: 'appointments_today',
+                                toPhase: 'waiting'
+                              })
+                            }
                           }}
                         >
                           Mark Waiting
@@ -389,6 +410,7 @@ const QueueManagement = ({ onQueueUpdate }) => {
                               fromPhase: 'with_doctor',
                               toPhase: 'completed'
                             })
+                            setSelectedAppointmentForPayment(appointment)
                             setShowPaymentModal(true)
                           }}
                         >
@@ -401,7 +423,10 @@ const QueueManagement = ({ onQueueUpdate }) => {
                           <Button
                             size="sm"
                             className="flex-1 bg-gray-600 hover:bg-gray-700"
-                            onClick={handleProcessPayment}
+                            onClick={() => {
+                              setSelectedAppointmentForPayment(appointment)
+                              handleProcessPayment()
+                            }}
                           >
                             Process Payment
                       </Button>

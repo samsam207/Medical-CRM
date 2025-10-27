@@ -59,12 +59,12 @@ def create_app(config_name=None):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    socketio.init_app(app, async_mode='eventlet', cors_allowed_origins=app.config.get('ALLOWED_ORIGINS', ['http://localhost:3000']))
+    socketio.init_app(app, async_mode='eventlet', cors_allowed_origins=app.config.get('ALLOWED_ORIGINS', ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002', 'http://localhost:5173']))
     cache.init_app(app)
     limiter.init_app(app)
     
     # CORS Configuration with security
-    allowed_origins = os.environ.get('ALLOWED_ORIGINS', 'http://localhost:3000').split(',')
+    allowed_origins = os.environ.get('ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:5173').split(',')
     CORS(app, origins=allowed_origins, supports_credentials=True)
     
     # Import models to register them with SQLAlchemy

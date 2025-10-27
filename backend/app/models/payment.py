@@ -10,6 +10,7 @@ class PaymentMethod(enum.Enum):
 
 class PaymentStatus(enum.Enum):
     PENDING = "pending"
+    PARTIALLY_PAID = "partially_paid"
     PAID = "paid"
     REFUNDED = "refunded"
 
@@ -21,6 +22,7 @@ class Payment(db.Model):
     patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'), nullable=False, index=True)
     total_amount = db.Column(db.Numeric(10, 2), nullable=False)
     amount_paid = db.Column(db.Numeric(10, 2), nullable=False)
+    discount_amount = db.Column(db.Numeric(10, 2), default=0, nullable=False)
     payment_method = db.Column(db.Enum(PaymentMethod), nullable=False)
     status = db.Column(db.Enum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False)
     doctor_share = db.Column(db.Numeric(10, 2), nullable=False)
@@ -36,11 +38,12 @@ class Payment(db.Model):
     )
     
     def __init__(self, visit_id, patient_id, total_amount, amount_paid, payment_method, 
-                 doctor_share, center_share, status=PaymentStatus.PENDING):
+                 doctor_share, center_share, status=PaymentStatus.PENDING, discount_amount=0):
         self.visit_id = visit_id
         self.patient_id = patient_id
         self.total_amount = Decimal(str(total_amount))
         self.amount_paid = Decimal(str(amount_paid))
+        self.discount_amount = Decimal(str(discount_amount))
         self.payment_method = payment_method
         self.doctor_share = Decimal(str(doctor_share))
         self.center_share = Decimal(str(center_share))
@@ -51,6 +54,14 @@ class Payment(db.Model):
         self.status = PaymentStatus.PAID
         self.paid_at = datetime.utcnow()
     
+    @property
+    def remaining_amount(self):
+        """Calculate remaining amount after accounting for discount"""
+        total = float(self.total_amount)
+        paid = float(self.amount_paid)
+        discount = float(self.discount_amount)
+        return max(0, total - discount - paid)
+    
     def to_dict(self):
         """Convert payment to dictionary"""
         return {
@@ -59,6 +70,8 @@ class Payment(db.Model):
             'patient_id': self.patient_id,
             'total_amount': float(self.total_amount),
             'amount_paid': float(self.amount_paid),
+            'discount_amount': float(self.discount_amount),
+            'remaining_amount': self.remaining_amount,
             'payment_method': self.payment_method.value if self.payment_method else None,
             'status': self.status.value if self.status else None,
             'doctor_share': float(self.doctor_share),

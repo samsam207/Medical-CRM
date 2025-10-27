@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { User, Phone, Calendar, Search, Plus, Eye, Edit, Trash2, Filter } from 'lucide-react'
 import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
@@ -7,6 +7,7 @@ import { Modal } from '../components/common/Modal'
 import { Spinner } from '../components/common/Spinner'
 import { patientsApi } from '../api'
 import { formatDate } from '../utils/formatters'
+import { useMutationWithRefetch } from '../hooks/useMutationWithRefetch'
 
 const PatientsListPage = () => {
   const [searchQuery, setSearchQuery] = useState('')
@@ -27,19 +28,22 @@ const PatientsListPage = () => {
   const queryClient = useQueryClient()
 
   // Fetch patients
-  const { data: patients = [], isLoading, error } = useQuery({
+  const { data: patients = [], isLoading, error, refetch } = useQuery({
     queryKey: ['patients', searchQuery, genderFilter],
     queryFn: () => patientsApi.getPatients({
-      search: searchQuery,
-      gender: genderFilter !== 'all' ? genderFilter : undefined
-    }).then(res => res?.patients || [])
+      phone: searchQuery || undefined,
+      name: searchQuery || undefined
+    }).then(res => res?.patients || []),
+    refetchOnWindowFocus: false
   })
 
   // Create patient mutation
-  const createPatientMutation = useMutation({
+  const createPatientMutation = useMutationWithRefetch({
     mutationFn: (data) => patientsApi.createPatient(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['patients'])
+    queryKeys: [['patients']],
+    onSuccessMessage: 'Patient created successfully',
+    onErrorMessage: 'Failed to create patient',
+    onSuccessCallback: () => {
       setIsCreateModalOpen(false)
       setNewPatientData({
         name: '',
@@ -53,21 +57,24 @@ const PatientsListPage = () => {
   })
 
   // Update patient mutation
-  const updatePatientMutation = useMutation({
+  const updatePatientMutation = useMutationWithRefetch({
     mutationFn: ({ id, data }) => patientsApi.updatePatient(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['patients'])
+    queryKeys: [['patients']],
+    onSuccessMessage: 'Patient updated successfully',
+    onErrorMessage: 'Failed to update patient',
+    onSuccessCallback: () => {
       setIsEditModalOpen(false)
       setSelectedPatient(null)
     }
   })
 
   // Delete patient mutation
-  const deletePatientMutation = useMutation({
+  const deletePatientMutation = useMutationWithRefetch({
     mutationFn: (id) => patientsApi.deletePatient(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['patients'])
-    }
+    queryKeys: [['patients']],
+    onSuccessMessage: 'Patient deleted successfully',
+    onErrorMessage: 'Failed to delete patient. This patient may have existing appointments or visits.',
+    onSuccessCallback: () => setSelectedPatient(null)
   })
 
   const handleViewPatient = (patient) => {
@@ -91,9 +98,18 @@ const PatientsListPage = () => {
   }
 
   const handleUpdatePatient = () => {
+    // Extract only the fields we want to update
+    const updateData = {
+      name: selectedPatient.name,
+      phone: selectedPatient.phone,
+      age: selectedPatient.age,
+      gender: selectedPatient.gender,
+      address: selectedPatient.address,
+      medical_history: selectedPatient.medical_history
+    }
     updatePatientMutation.mutate({
       id: selectedPatient.id,
-      data: selectedPatient
+      data: updateData
     })
   }
 
@@ -496,6 +512,44 @@ const PatientsListPage = () => {
           </div>
         </div>
       </Modal>
+
+      {/* Toast Notification */}
+      {(createPatientMutation.toast.show || updatePatientMutation.toast.show || deletePatientMutation.toast.show) && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg flex items-center gap-3 ${
+          (() => {
+            if (createPatientMutation.toast.show) return createPatientMutation.toast.type
+            if (updatePatientMutation.toast.show) return updatePatientMutation.toast.type
+            if (deletePatientMutation.toast.show) return deletePatientMutation.toast.type
+          })() === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+        }`}>
+          <div className={`w-5 h-5 flex items-center justify-center rounded-full ${(() => {
+            if (createPatientMutation.toast.show) return createPatientMutation.toast.type
+            if (updatePatientMutation.toast.show) return updatePatientMutation.toast.type
+            if (deletePatientMutation.toast.show) return deletePatientMutation.toast.type
+          })() === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
+            {(() => {
+              if (createPatientMutation.toast.show) return createPatientMutation.toast.type
+              if (updatePatientMutation.toast.show) return updatePatientMutation.toast.type
+              if (deletePatientMutation.toast.show) return deletePatientMutation.toast.type
+            })() === 'success' ? '✓' : '✕'}
+          </div>
+          <span className="font-medium">
+            {createPatientMutation.toast.show && createPatientMutation.toast.message}
+            {updatePatientMutation.toast.show && updatePatientMutation.toast.message}
+            {deletePatientMutation.toast.show && deletePatientMutation.toast.message}
+          </span>
+          <button 
+            onClick={() => {
+              if (createPatientMutation.toast.show) createPatientMutation.dismissToast()
+              if (updatePatientMutation.toast.show) updatePatientMutation.dismissToast()
+              if (deletePatientMutation.toast.show) deletePatientMutation.dismissToast()
+            }}
+            className="ml-2 text-white hover:text-gray-200"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   )
 }

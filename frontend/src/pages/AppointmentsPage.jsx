@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Calendar, Clock, User, Phone, Search, Filter, Plus, Eye, Edit, Trash2 } from 'lucide-react'
 import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
@@ -8,6 +8,7 @@ import { Spinner } from '../components/common/Spinner'
 import BookingWizard from '../components/BookingWizard'
 import { appointmentsApi, patientsApi, clinicsApi } from '../api'
 import { formatDate, formatTime } from '../utils/formatters'
+import { useMutationWithRefetch } from '../hooks/useMutationWithRefetch'
 
 const AppointmentsPage = () => {
   const [selectedDate, setSelectedDate] = useState(new Date())
@@ -17,8 +18,6 @@ const AppointmentsPage = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false)
-
-  const queryClient = useQueryClient()
 
   // Fetch appointments
   const { data: appointments = [], isLoading, error } = useQuery({
@@ -36,21 +35,23 @@ const AppointmentsPage = () => {
   })
 
   // Update appointment mutation
-  const updateAppointmentMutation = useMutation({
+  const updateAppointmentMutation = useMutationWithRefetch({
     mutationFn: ({ id, data }) => appointmentsApi.updateAppointment(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['appointments'])
+    queryKeys: [['appointments'], ['dashboard-stats']],
+    onSuccessMessage: 'Appointment updated successfully',
+    onErrorMessage: 'Failed to update appointment',
+    onSuccessCallback: () => {
       setIsEditModalOpen(false)
       setSelectedAppointment(null)
     }
   })
 
   // Delete appointment mutation
-  const cancelAppointmentMutation = useMutation({
+  const cancelAppointmentMutation = useMutationWithRefetch({
     mutationFn: (id) => appointmentsApi.cancelAppointment(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['appointments'])
-    }
+    queryKeys: [['appointments'], ['dashboard-stats']],
+    onSuccessMessage: 'Appointment cancelled successfully',
+    onErrorMessage: 'Failed to cancel appointment. Only confirmed appointments can be cancelled.'
   })
 
   const filteredAppointments = appointments.filter(appointment => {
@@ -398,6 +399,27 @@ const AppointmentsPage = () => {
           setIsBookingModalOpen(false)
         }}
       />
+
+      {/* Toast Notification */}
+      {(updateAppointmentMutation.toast.show || cancelAppointmentMutation.toast.show) && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg flex items-center gap-3 ${
+          (updateAppointmentMutation.toast.show ? updateAppointmentMutation.toast.type : cancelAppointmentMutation.toast.type) === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+        }`}>
+          <div className={`w-5 h-5 flex items-center justify-center rounded-full ${(updateAppointmentMutation.toast.show ? updateAppointmentMutation.toast.type : cancelAppointmentMutation.toast.type) === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
+            {(updateAppointmentMutation.toast.show ? updateAppointmentMutation.toast.type : cancelAppointmentMutation.toast.type) === 'success' ? '✓' : '✕'}
+          </div>
+          <span className="font-medium">{updateAppointmentMutation.toast.show ? updateAppointmentMutation.toast.message : cancelAppointmentMutation.toast.message}</span>
+          <button 
+            onClick={() => {
+              if (updateAppointmentMutation.toast.show) updateAppointmentMutation.dismissToast()
+              if (cancelAppointmentMutation.toast.show) cancelAppointmentMutation.dismissToast()
+            }}
+            className="ml-2 text-white hover:text-gray-200"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   )
 }

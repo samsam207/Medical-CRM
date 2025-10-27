@@ -25,6 +25,15 @@ export const paymentsApi = {
     return response.data
   },
 
+  // Export payments to Excel
+  exportPayments: async (params = {}) => {
+    const response = await api.get('/payments/export', { 
+      params,
+      responseType: 'blob' // Important for file downloads
+    })
+    return response
+  },
+
   // Get invoice
   getInvoice: async (visitId) => {
     const response = await api.get(`/payments/invoice/${visitId}`)

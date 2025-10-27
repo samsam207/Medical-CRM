@@ -32,7 +32,8 @@ def get_patients():
     if phone:
         query = query.filter(Patient.phone.contains(phone))
     if name:
-        query = query.filter(Patient.name.contains(name))
+        # Use case-insensitive search
+        query = query.filter(Patient.name.ilike(f'%{name}%'))
     
     # Order by name
     query = query.order_by(Patient.name)

@@ -8,6 +8,7 @@ import { Spinner } from './common/Spinner'
 import { appointmentsApi, patientsApi, clinicsApi } from '../api'
 import { formatDate, formatTime } from '../utils/formatters'
 import { validateForm, commonRules } from '../utils/validation'
+import { useMutationWithRefetch } from '../hooks/useMutationWithRefetch'
 
 const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
   console.log('BookingWizard mounted, isOpen:', isOpen);
@@ -108,15 +109,15 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
   // Fetch doctors for selected clinic
   const { data: doctors = [] } = useQuery({
     queryKey: ['doctors', formData.clinic_id],
-    queryFn: () => clinicsApi.getClinicDoctors(formData.clinic_id).then(res => res?.data?.doctors || []),
-    enabled: !!formData.clinic_id
+    queryFn: () => clinicsApi.getClinicDoctors(parseInt(formData.clinic_id)).then(res => res?.data?.doctors || []),
+    enabled: !!formData.clinic_id && formData.clinic_id !== ''
   })
 
   // Fetch services for selected clinic
   const { data: services = [] } = useQuery({
     queryKey: ['services', formData.clinic_id],
-    queryFn: () => clinicsApi.getClinicServices(formData.clinic_id).then(res => res?.services || []),
-    enabled: !!formData.clinic_id
+    queryFn: () => clinicsApi.getClinicServices(parseInt(formData.clinic_id)).then(res => res?.services || []),
+    enabled: !!formData.clinic_id && formData.clinic_id !== ''
   })
 
   // Search patients
@@ -138,11 +139,12 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
   })
 
   // Create appointment mutation
-  const createAppointmentMutation = useMutation({
+  const createAppointmentMutation = useMutationWithRefetch({
     mutationFn: (data) => appointmentsApi.createAppointment(data),
-    onSuccess: (response) => {
-      queryClient.invalidateQueries(['appointments'])
-      queryClient.invalidateQueries(['dashboard-stats'])
+    queryKeys: [['appointments'], ['dashboard-stats'], ['queue-phases']],
+    onSuccessMessage: 'Appointment created successfully',
+    onErrorMessage: 'Failed to create appointment',
+    onSuccessCallback: (response) => {
       onSuccess?.(response.data)
       handleClose()
     }
@@ -206,7 +208,15 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
   }, [currentStep])
 
   const handleSubmit = () => {
-    createAppointmentMutation.mutate(formData)
+    // Convert IDs to integers for backend
+    const appointmentData = {
+      ...formData,
+      clinic_id: parseInt(formData.clinic_id),
+      doctor_id: parseInt(formData.doctor_id),
+      patient_id: parseInt(formData.patient_id),
+      service_id: parseInt(formData.service_id)
+    }
+    createAppointmentMutation.mutate(appointmentData)
   }
 
   const handleCreatePatient = () => {
@@ -222,13 +232,15 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
     console.log('canProceed check:', { currentStep, formData, clinic_id: formData.clinic_id, clinic_id_type: typeof formData.clinic_id });
     switch (currentStep) {
       case 1: 
-        const step1Result = !!formData.clinic_id;
-        console.log('Step 1 canProceed:', step1Result);
-        return step1Result;
-      case 2: return !!formData.doctor_id
-      case 3: return !!formData.patient_id
-      case 4: return !!formData.service_id && !!formData.start_time
-      case 5: return !!formData.clinic_id && !!formData.doctor_id && !!formData.patient_id && !!formData.service_id && !!formData.start_time
+        // Accept both string and number types for clinic_id
+        const clinicSelected = formData.clinic_id && formData.clinic_id !== '' && formData.clinic_id !== undefined;
+        console.log('Step 1 canProceed:', clinicSelected, 'clinic_id:', formData.clinic_id);
+        return clinicSelected;
+      case 2: return !!formData.doctor_id && formData.doctor_id !== ''
+      case 3: return !!formData.patient_id && formData.patient_id !== ''
+      case 4: return !!formData.service_id && !!formData.start_time && formData.service_id !== '' && formData.start_time !== ''
+      case 5: return !!formData.clinic_id && !!formData.doctor_id && !!formData.patient_id && !!formData.service_id && !!formData.start_time &&
+               formData.clinic_id !== '' && formData.doctor_id !== '' && formData.patient_id !== '' && formData.service_id !== '' && formData.start_time !== ''
       default: return false
     }
   }
@@ -250,7 +262,7 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
           <Card
             key={clinic.id}
             className={`p-4 cursor-pointer transition-colors ${
-              formData.clinic_id === clinic.id
+              formData.clinic_id === String(clinic.id)
                 ? 'border-blue-500 bg-blue-50'
                 : 'hover:bg-gray-50'
             }`}
@@ -260,7 +272,10 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
               setFormData(prev => {
                 const newData = { 
                   ...prev, 
-                  clinic_id: clinic.id,
+                  clinic_id: String(clinic.id),
+                  doctor_id: '', // Reset doctor when clinic changes
+                  service_id: '', // Reset service when clinic changes
+                  start_time: '', // Reset time when clinic changes
                   selectedClinic: clinic
                 };
                 console.log('Form data after clinic selection:', newData);
@@ -294,13 +309,13 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
           <Card
             key={doctor.id}
             className={`p-4 cursor-pointer transition-colors ${
-              formData.doctor_id === doctor.id
+              formData.doctor_id === String(doctor.id)
                 ? 'border-blue-500 bg-blue-50'
                 : 'hover:bg-gray-50'
             }`}
             onClick={() => setFormData(prev => ({ 
               ...prev, 
-              doctor_id: doctor.id,
+              doctor_id: String(doctor.id),
               selectedDoctor: doctor
             }))}
           >
@@ -349,13 +364,13 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
             <Card
               key={patient.id}
               className={`p-3 cursor-pointer transition-colors ${
-                formData.patient_id === patient.id
+                formData.patient_id === String(patient.id)
                   ? 'border-blue-500 bg-blue-50'
                   : 'hover:bg-gray-50'
               }`}
               onClick={() => setFormData(prev => ({ 
                 ...prev, 
-                patient_id: patient.id,
+                patient_id: String(patient.id),
                 selectedPatient: patient
               }))}
             >

@@ -94,6 +94,8 @@ class PaymentService:
             'payment': {
                 'total_amount': float(payment.total_amount),
                 'amount_paid': float(payment.amount_paid),
+                'discount_amount': float(payment.discount_amount),
+                'remaining_amount': payment.remaining_amount,
                 'payment_method': payment.payment_method.value,
                 'doctor_share': float(payment.doctor_share),
                 'center_share': float(payment.center_share)
@@ -114,8 +116,8 @@ class PaymentService:
         if not payment:
             raise ValueError("Payment not found")
         
-        if payment.status != PaymentStatus.PAID:
-            raise ValueError("Only paid payments can be refunded")
+        if payment.status not in [PaymentStatus.PAID, PaymentStatus.PARTIALLY_PAID]:
+            raise ValueError("Only paid or partially paid payments can be refunded")
         
         # Update payment status
         payment.status = PaymentStatus.REFUNDED

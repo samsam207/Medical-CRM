@@ -74,23 +74,23 @@ def get_receptionist_stats(date):
         Appointment.status == AppointmentStatus.COMPLETED
     ).count()
     
-    # Today's visits (based on appointment date, not creation date)
-    today_visits = db.session.query(Visit).join(Appointment).filter(
-        db.func.date(Appointment.start_time) == date
+    # Today's visits (count by creation date for simplicity)
+    today_visits = db.session.query(Visit).filter(
+        db.func.date(Visit.created_at) == date
     ).count()
     
-    waiting_visits = db.session.query(Visit).join(Appointment).filter(
-        db.func.date(Appointment.start_time) == date,
+    waiting_visits = db.session.query(Visit).filter(
+        db.func.date(Visit.created_at) == date,
         Visit.status == VisitStatus.WAITING
     ).count()
     
-    in_progress_visits = db.session.query(Visit).join(Appointment).filter(
-        db.func.date(Appointment.start_time) == date,
+    in_progress_visits = db.session.query(Visit).filter(
+        db.func.date(Visit.created_at) == date,
         Visit.status == VisitStatus.IN_PROGRESS
     ).count()
     
-    pending_payment_visits = db.session.query(Visit).join(Appointment).filter(
-        db.func.date(Appointment.start_time) == date,
+    pending_payment_visits = db.session.query(Visit).filter(
+        db.func.date(Visit.created_at) == date,
         Visit.status == VisitStatus.PENDING_PAYMENT
     ).count()
     
@@ -172,35 +172,35 @@ def get_doctor_stats(doctor_id, date):
         db.func.date(Appointment.start_time) == date
     ).count()
     
-    # Doctor's visits today (based on appointment date)
-    today_visits = db.session.query(Visit).join(Appointment).filter(
+    # Doctor's visits today (based on creation date for simplicity)
+    today_visits = db.session.query(Visit).filter(
         Visit.doctor_id == doctor_id,
-        db.func.date(Appointment.start_time) == date
+        db.func.date(Visit.created_at) == date
     ).count()
     
     # Doctor's queue
-    waiting_patients = db.session.query(Visit).join(Appointment).filter(
+    waiting_patients = db.session.query(Visit).filter(
         Visit.doctor_id == doctor_id,
         Visit.status == VisitStatus.WAITING,
-        db.func.date(Appointment.start_time) == date
+        db.func.date(Visit.created_at) == date
     ).count()
     
-    called_patients = db.session.query(Visit).join(Appointment).filter(
+    called_patients = db.session.query(Visit).filter(
         Visit.doctor_id == doctor_id,
         Visit.status == VisitStatus.CALLED,
-        db.func.date(Appointment.start_time) == date
+        db.func.date(Visit.created_at) == date
     ).count()
     
-    in_progress_patients = db.session.query(Visit).join(Appointment).filter(
+    in_progress_patients = db.session.query(Visit).filter(
         Visit.doctor_id == doctor_id,
         Visit.status == VisitStatus.IN_PROGRESS,
-        db.func.date(Appointment.start_time) == date
+        db.func.date(Visit.created_at) == date
     ).count()
     
-    completed_patients = db.session.query(Visit).join(Appointment).filter(
+    completed_patients = db.session.query(Visit).filter(
         Visit.doctor_id == doctor_id,
         Visit.status == VisitStatus.COMPLETED,
-        db.func.date(Appointment.start_time) == date
+        db.func.date(Visit.created_at) == date
     ).count()
     
     # Doctor's revenue today

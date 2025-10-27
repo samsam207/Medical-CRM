@@ -35,29 +35,6 @@ class Visit(db.Model):
     prescription = db.relationship('Prescription', back_populates='visit', uselist=False)
     payment = db.relationship('Payment', backref='visit', uselist=False)
     
-    # Indexes for performance
-    __table_args__ = (
-        db.Index('idx_visit_clinic_status_date', 'clinic_id', 'status', db.func.date('created_at')),
-        db.Index('idx_visit_doctor_status', 'doctor_id', 'status'),
-        db.Index('idx_visit_patient_date', 'patient_id', db.func.date('created_at')),
-    )
-    
-    def __init__(self, doctor_id, patient_id, service_id, clinic_id, check_in_time, 
-                 visit_type, queue_number, appointment_id=None, start_time=None, end_time=None, status=None, called_time=None):
-        self.doctor_id = doctor_id
-        self.patient_id = patient_id
-        self.service_id = service_id
-        self.clinic_id = clinic_id
-        self.check_in_time = check_in_time
-        self.visit_type = visit_type
-        self.queue_number = queue_number
-        self.appointment_id = appointment_id
-        self.start_time = start_time
-        self.end_time = end_time
-        self.called_time = called_time
-        if status:
-            self.status = status
-    
     def to_dict(self):
         """Convert visit to dictionary"""
         return {
