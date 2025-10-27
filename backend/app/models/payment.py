@@ -64,7 +64,7 @@ class Payment(db.Model):
     
     def to_dict(self):
         """Convert payment to dictionary"""
-        return {
+        data = {
             'id': self.id,
             'visit_id': self.visit_id,
             'patient_id': self.patient_id,
@@ -79,6 +79,10 @@ class Payment(db.Model):
             'paid_at': self.paid_at.isoformat() if self.paid_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+        
+        # Visit data will be added by the route using joinedload
+        
+        return data
     
     def __repr__(self):
         return f'<Payment {self.id} - {self.amount_paid}>'

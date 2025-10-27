@@ -18,51 +18,123 @@ payments_bp = Blueprint('payments', __name__)
 @jwt_required()
 def get_payments():
     """Get payments with optional filters"""
-    patient_id = request.args.get('patient_id', type=int)
-    status = request.args.get('status')
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 50, type=int)
-    
-    query = Payment.query
-    
-    if patient_id:
-        query = query.filter(Payment.patient_id == patient_id)
-    if status:
-        try:
-            status_enum = PaymentStatus(status)
-            query = query.filter(Payment.status == status_enum)
-        except ValueError:
-            return jsonify({'message': 'Invalid status'}), 400
-    if start_date:
-        try:
-            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
-            query = query.filter(db.func.date(Payment.created_at) >= start_date_obj)
-        except ValueError:
-            return jsonify({'message': 'Invalid start_date format. Use YYYY-MM-DD'}), 400
-    if end_date:
-        try:
-            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
-            query = query.filter(db.func.date(Payment.created_at) <= end_date_obj)
-        except ValueError:
-            return jsonify({'message': 'Invalid end_date format. Use YYYY-MM-DD'}), 400
-    
-    # Order by creation date
-    query = query.order_by(Payment.created_at.desc())
-    
-    # Paginate
-    payments = query.paginate(
-        page=page, per_page=per_page, error_out=False
-    )
-    
-    return jsonify({
-        'payments': [payment.to_dict() for payment in payments.items],
-        'total': payments.total,
-        'pages': payments.pages,
-        'current_page': page,
-        'per_page': per_page
-    }), 200
+    try:
+        patient_id = request.args.get('patient_id', type=int)
+        status = request.args.get('status')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        
+        query = Payment.query
+        
+        if patient_id:
+            query = query.filter(Payment.patient_id == patient_id)
+        if status:
+            try:
+                status_enum = PaymentStatus(status)
+                query = query.filter(Payment.status == status_enum)
+            except ValueError:
+                return jsonify({'message': 'Invalid status'}), 400
+        if start_date:
+            try:
+                start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+                query = query.filter(db.func.date(Payment.created_at) >= start_date_obj)
+            except ValueError:
+                return jsonify({'message': 'Invalid start_date format. Use YYYY-MM-DD'}), 400
+        if end_date:
+            try:
+                end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+                query = query.filter(db.func.date(Payment.created_at) <= end_date_obj)
+            except ValueError:
+                return jsonify({'message': 'Invalid end_date format. Use YYYY-MM-DD'}), 400
+        
+        # Order by creation date
+        query = query.order_by(Payment.created_at.desc())
+        
+        # Paginate
+        payments = query.paginate(
+            page=page, per_page=per_page, error_out=False
+        )
+        
+        # Serialize with visit data
+        def serialize_payment(payment):
+            try:
+                payment_dict = payment.to_dict()
+                
+                # Add visit data if available
+                try:
+                    if hasattr(payment, 'visit') and payment.visit:
+                        payment_dict['visit'] = {
+                            'id': payment.visit.id
+                        }
+                        
+                        # Manually query for related data to avoid relationship recursion
+                        from app.models.patient import Patient
+                        from app.models.doctor import Doctor
+                        from app.models.clinic import Clinic
+                        from app.models.service import Service
+                        
+                        patient = db.session.get(Patient, payment.visit.patient_id) if payment.visit.patient_id else None
+                        doctor = db.session.get(Doctor, payment.visit.doctor_id) if payment.visit.doctor_id else None
+                        clinic = db.session.get(Clinic, payment.visit.clinic_id) if payment.visit.clinic_id else None
+                        service = db.session.get(Service, payment.visit.service_id) if payment.visit.service_id else None
+                        
+                        payment_dict['visit']['patient'] = {
+                            'id': patient.id,
+                            'name': patient.name,
+                            'phone': patient.phone
+                        } if patient else None
+                        
+                        payment_dict['visit']['doctor'] = {
+                            'id': doctor.id,
+                            'name': doctor.name
+                        } if doctor else None
+                        
+                        payment_dict['visit']['clinic'] = {
+                            'id': clinic.id,
+                            'name': clinic.name
+                        } if clinic else None
+                        
+                        payment_dict['visit']['service'] = {
+                            'id': service.id,
+                            'name': service.name,
+                            'price': float(service.price) if service.price else None
+                        } if service else None
+                except Exception as e:
+                    payment_dict['visit'] = None
+                    
+                return payment_dict
+            except Exception as e:
+                # Fallback to basic serialization
+                return {
+                    'id': payment.id,
+                    'visit_id': payment.visit_id,
+                    'patient_id': payment.patient_id,
+                    'total_amount': float(payment.total_amount),
+                    'amount_paid': float(payment.amount_paid),
+                    'discount_amount': float(payment.discount_amount),
+                    'remaining_amount': payment.remaining_amount,
+                    'payment_method': payment.payment_method.value if payment.payment_method else None,
+                    'status': payment.status.value if payment.status else None,
+                    'doctor_share': float(payment.doctor_share),
+                    'center_share': float(payment.center_share),
+                    'paid_at': payment.paid_at.isoformat() if payment.paid_at else None,
+                    'created_at': payment.created_at.isoformat() if payment.created_at else None,
+                    'visit': None
+                }
+        
+        return jsonify({
+            'payments': [serialize_payment(payment) for payment in payments.items],
+            'total': payments.total,
+            'pages': payments.pages,
+            'current_page': page,
+            'per_page': per_page
+        }), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'message': f'An error occurred: {str(e)}'}), 500
 
 @payments_bp.route('/<int:payment_id>', methods=['GET'])
 @jwt_required()

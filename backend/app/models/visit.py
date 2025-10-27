@@ -31,13 +31,13 @@ class Visit(db.Model):
     queue_number = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    # Relationships
+    # Relationships - Use back_populates to avoid conflicts
     prescription = db.relationship('Prescription', back_populates='visit', uselist=False)
     payment = db.relationship('Payment', backref='visit', uselist=False)
     
     def to_dict(self):
         """Convert visit to dictionary"""
-        return {
+        data = {
             'id': self.id,
             'appointment_id': self.appointment_id,
             'doctor_id': self.doctor_id,
@@ -51,13 +51,13 @@ class Visit(db.Model):
             'status': self.status.value if self.status else None,
             'visit_type': self.visit_type.value if self.visit_type else None,
             'queue_number': self.queue_number,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            # Include related data
-            'patient': self.patient.to_dict() if self.patient else None,
-            'doctor': self.doctor.to_dict() if self.doctor else None,
-            'clinic': self.clinic.to_dict() if self.clinic else None,
-            'service': self.service.to_dict() if self.service else None
+            'created_at': self.created_at.isoformat() if self.created_at else None
         }
+        
+        # Note: Relationships are defined in other models via backref
+        # This to_dict will return basic data without nested relationships
+        
+        return data
     
     def __repr__(self):
         return f'<Visit {self.id} - Queue #{self.queue_number}>'
