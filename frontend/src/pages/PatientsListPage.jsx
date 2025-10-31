@@ -8,6 +8,7 @@ import { Spinner } from '../components/common/Spinner'
 import { patientsApi } from '../api'
 import { formatDate } from '../utils/formatters'
 import { useMutationWithRefetch } from '../hooks/useMutationWithRefetch'
+import PageContainer from '../components/layout/PageContainer'
 
 const PatientsListPage = () => {
   const [searchQuery, setSearchQuery] = useState('')
@@ -143,7 +144,7 @@ const PatientsListPage = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <PageContainer className="space-y-8">
       {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Patients</h1>
@@ -550,7 +551,7 @@ const PatientsListPage = () => {
           </button>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }
 

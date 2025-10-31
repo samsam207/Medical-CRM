@@ -1,19 +1,24 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
-import ReceptionDashboard from './pages/ReceptionDashboard'
+import DashboardPage from './pages/DashboardPage'
 import DoctorDashboard from './pages/DoctorDashboard'
 import PatientsListPage from './pages/PatientsListPage'
 import AppointmentsPage from './pages/AppointmentsPage'
 import PaymentsPage from './pages/PaymentsPage'
 import ReportsPage from './pages/ReportsPage'
+import QueueManagementPage from './pages/QueueManagementPage'
+import ClinicsDoctorsPage from './pages/ClinicsDoctorsPage'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import ErrorBoundary from './components/common/ErrorBoundary'
+import AppShell from './components/layout/AppShell'
+import { LayoutProvider } from './contexts/LayoutContext'
 
 function App() {
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-background-500 font-arabic" dir="rtl">
-        <Routes>
+      <LayoutProvider>
+        <div className="min-h-screen bg-gray-50 font-arabic" dir="rtl">
+          <Routes>
             <Route 
               path="/login" 
               element={<Login />}
@@ -22,7 +27,9 @@ function App() {
               path="/reception" 
               element={
                 <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
-                  <ReceptionDashboard />
+                  <AppShell>
+                    <DashboardPage />
+                  </AppShell>
                 </ProtectedRoute>
               } 
             />
@@ -35,41 +42,70 @@ function App() {
               } 
             />
             <Route 
-              path="/patients" 
+              path="/reception/patients" 
               element={
                 <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
-                  <PatientsListPage />
+                  <AppShell>
+                    <PatientsListPage />
+                  </AppShell>
                 </ProtectedRoute>
               } 
             />
             <Route 
-              path="/appointments" 
+              path="/reception/appointments" 
               element={
                 <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
-                  <AppointmentsPage />
+                  <AppShell>
+                    <AppointmentsPage />
+                  </AppShell>
                 </ProtectedRoute>
               } 
             />
             <Route 
-              path="/payments" 
+              path="/reception/payments" 
               element={
                 <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
-                  <PaymentsPage />
+                  <AppShell>
+                    <PaymentsPage />
+                  </AppShell>
                 </ProtectedRoute>
               } 
             />
             <Route 
-              path="/reports" 
+              path="/reception/reports" 
               element={
                 <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
-                  <ReportsPage />
+                  <AppShell>
+                    <ReportsPage />
+                  </AppShell>
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/reception/clinics-doctors" 
+              element={
+                <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
+                  <AppShell>
+                    <ClinicsDoctorsPage />
+                  </AppShell>
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/reception/queue" 
+              element={
+                <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
+                  <AppShell>
+                    <QueueManagementPage />
+                  </AppShell>
                 </ProtectedRoute>
               } 
             />
             <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </div>
+          </Routes>
+        </div>
+      </LayoutProvider>
     </ErrorBoundary>
   )
 }

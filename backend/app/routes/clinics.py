@@ -84,14 +84,68 @@ def get_clinic_services(clinic_id):
 @jwt_required()
 def get_clinic_doctors(clinic_id):
     """Get doctors for a specific clinic"""
+    from sqlalchemy.orm import joinedload
+    from app.models.doctor_schedule import DoctorSchedule
+    
     clinic = Clinic.query.get_or_404(clinic_id)
+    
+    # Eager load schedules to avoid N+1 queries
     doctors = Doctor.query.filter_by(clinic_id=clinic_id).all()
+    
+    # Pre-fetch all schedules for these doctors in one query
+    doctor_ids = [doctor.id for doctor in doctors]
+    schedules = DoctorSchedule.query.filter(
+        DoctorSchedule.doctor_id.in_(doctor_ids)
+    ).all()
+    
+    # Group schedules by doctor_id
+    schedules_by_doctor = {}
+    for schedule in schedules:
+        if schedule.doctor_id not in schedules_by_doctor:
+            schedules_by_doctor[schedule.doctor_id] = []
+        schedules_by_doctor[schedule.doctor_id].append(schedule)
+    
+    # Check if each doctor has any available schedule
+    doctor_list = []
+    for doctor in doctors:
+        doctor_dict = doctor.to_dict(include_schedule=False)
+        # Replace schedule with pre-fetched data
+        doctor_dict['schedule'] = [s.to_dict() for s in schedules_by_doctor.get(doctor.id, [])]
+        # Check if doctor has any available hours
+        has_availability = any(s.is_available for s in schedules_by_doctor.get(doctor.id, []))
+        doctor_dict['has_schedule'] = len(doctor_dict['schedule']) > 0
+        doctor_dict['is_available'] = has_availability if doctor_dict['has_schedule'] else True
+        doctor_list.append(doctor_dict)
     
     return jsonify({
         'data': {
-            'doctors': [doctor.to_dict() for doctor in doctors]
+            'doctors': doctor_list
         }
     }), 200
+
+@clinics_bp.route('/<int:clinic_id>', methods=['DELETE'])
+@admin_required
+@log_audit('delete_clinic', 'clinic')
+def delete_clinic(clinic_id, current_user):
+    """Delete clinic"""
+    from app.models.doctor import Doctor
+    from app.models.service import Service
+    from app.models.appointment import Appointment
+    
+    clinic = Clinic.query.get_or_404(clinic_id)
+    
+    # Check if clinic has any doctors, services, or appointments
+    if Doctor.query.filter_by(clinic_id=clinic_id).count() > 0:
+        return jsonify({'message': 'Cannot delete clinic with existing doctors'}), 400
+    if Service.query.filter_by(clinic_id=clinic_id).count() > 0:
+        return jsonify({'message': 'Cannot delete clinic with existing services'}), 400
+    if Appointment.query.filter_by(clinic_id=clinic_id).count() > 0:
+        return jsonify({'message': 'Cannot delete clinic with existing appointments'}), 400
+    
+    db.session.delete(clinic)
+    db.session.commit()
+    
+    return jsonify({'message': 'Clinic deleted successfully'}), 200
 
 @clinics_bp.route('/<int:clinic_id>/services', methods=['POST'])
 @admin_required

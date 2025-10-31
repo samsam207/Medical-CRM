@@ -305,34 +305,62 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
         <div className="text-red-600 text-sm">{errors.doctor_id}</div>
       )}
       <div className="grid grid-cols-1 gap-4">
-        {doctors.map(doctor => (
-          <Card
-            key={doctor.id}
-            className={`p-4 cursor-pointer transition-colors ${
-              formData.doctor_id === String(doctor.id)
-                ? 'border-blue-500 bg-blue-50'
-                : 'hover:bg-gray-50'
-            }`}
-            onClick={() => setFormData(prev => ({ 
-              ...prev, 
-              doctor_id: String(doctor.id),
-              selectedDoctor: doctor
-            }))}
-          >
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                <User className="w-5 h-5 text-green-600" />
+        {doctors.map(doctor => {
+          // is_available is now set by the backend based on schedule
+          const isAvailable = doctor.is_available !== false && doctor.is_available !== undefined ? doctor.is_available : true
+          const isSelected = formData.doctor_id === String(doctor.id)
+          const hasSchedule = doctor.has_schedule === true
+          
+          return (
+            <Card
+              key={doctor.id}
+              className={`p-4 transition-colors ${
+                !isAvailable
+                  ? 'opacity-50 cursor-not-allowed bg-gray-100'
+                  : isSelected
+                    ? 'border-blue-500 bg-blue-50 cursor-pointer'
+                    : 'hover:bg-gray-50 cursor-pointer'
+              }`}
+              onClick={() => {
+                if (isAvailable) {
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    doctor_id: String(doctor.id),
+                    selectedDoctor: doctor
+                  }))
+                }
+              }}
+            >
+              <div className="flex items-center space-x-3">
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                  isAvailable ? 'bg-green-100' : 'bg-red-100'
+                }`}>
+                  {isAvailable ? (
+                    <User className="w-5 h-5 text-green-600" />
+                  ) : (
+                    <User className="w-5 h-5 text-red-600" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-medium">{doctor.name}</h4>
+                    {!isAvailable && hasSchedule && (
+                      <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded">
+                        Fully Booked
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-600">{doctor.specialty}</p>
+                  <p className="text-xs text-gray-500">
+                    {hasSchedule 
+                      ? (isAvailable ? 'Has availability' : 'No available hours')
+                      : `Working Days: ${doctor.working_days?.join(', ') || 'Not specified'}`}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h4 className="font-medium">{doctor.name}</h4>
-                <p className="text-sm text-gray-600">{doctor.specialty}</p>
-                <p className="text-xs text-gray-500">
-                  Working Days: {doctor.working_days?.join(', ') || 'Not specified'}
-                </p>
-              </div>
-            </div>
-          </Card>
-        ))}
+            </Card>
+          )
+        })}
       </div>
     </div>
   )

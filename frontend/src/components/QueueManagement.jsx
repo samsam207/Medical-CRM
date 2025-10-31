@@ -176,7 +176,7 @@ const QueueManagement = ({ onQueueUpdate }) => {
     if (selectedAppointmentForPayment && selectedAppointmentForPayment.payment_id) {
       navigate(`/payments?paymentId=${selectedAppointmentForPayment.payment_id}`)
     } else {
-      navigate('/payments')
+    navigate('/payments')
     }
   }
 
@@ -372,11 +372,11 @@ const QueueManagement = ({ onQueueUpdate }) => {
                               checkinPatientMutation.mutate(appointment.id)
                             } else {
                               // If visit_id exists, move directly to waiting
-                              movePatientMutation.mutate({
-                                visitId: appointment.visit_id,
-                                fromPhase: 'appointments_today',
-                                toPhase: 'waiting'
-                              })
+                            movePatientMutation.mutate({
+                              visitId: appointment.visit_id,
+                              fromPhase: 'appointments_today',
+                              toPhase: 'waiting'
+                            })
                             }
                           }}
                         >

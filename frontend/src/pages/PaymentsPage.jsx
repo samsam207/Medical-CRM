@@ -6,6 +6,7 @@ import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
 import { Modal } from '../components/common/Modal'
 import { Spinner } from '../components/common/Spinner'
+import PageContainer from '../components/layout/PageContainer'
 import { paymentsApi } from '../api'
 import { formatDate, formatTime, formatCurrency } from '../utils/formatters'
 import { useMutationWithRefetch } from '../hooks/useMutationWithRefetch'
@@ -210,7 +211,7 @@ const PaymentsPage = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <PageContainer className="space-y-8">
       {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Payments</h1>
@@ -682,7 +683,7 @@ const PaymentsPage = () => {
           </button>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }
 

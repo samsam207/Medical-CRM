@@ -10,7 +10,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/common/C
 import Button from '../components/common/Button'
 import BookingWizard from '../components/BookingWizard'
 import QueueManagement from '../components/QueueManagement'
-import { Plus, Users, Calendar, CreditCard, AlertCircle, Stethoscope, Wifi, WifiOff } from 'lucide-react'
+import ClinicsAndDoctorsPage from './ClinicsAndDoctorsPage'
+import { Plus, Users, Calendar, CreditCard, AlertCircle, Stethoscope, Wifi, WifiOff, Building2 } from 'lucide-react'
 
 const ReceptionDashboard = () => {
   const { user, logout } = useAuthStore()
@@ -226,7 +227,7 @@ const ReceptionDashboard = () => {
                 <select
                   value={selectedClinic || ''}
                   onChange={(e) => setSelectedClinic(parseInt(e.target.value))}
-                  className="px-4 py-2 border-2 border-gray-200 rounded-2xl text-sm font-arabic focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition-all duration-300"
+                  className="px-4 py-2 border-2 border-gray-200 rounded-2xl text-sm font-arabic focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-300"
                 >
                   {clinics.map((clinic) => (
                     <option key={clinic.id} value={clinic.id}>
@@ -281,6 +282,19 @@ const ReceptionDashboard = () => {
                 <div className="flex items-center justify-center gap-2">
                   <Stethoscope className="w-5 h-5" />
                   إدارة الطوابير
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('clinics')}
+                className={`flex-1 py-4 px-6 rounded-2xl font-bold font-arabic text-sm transition-all duration-300 ${
+                  activeTab === 'clinics'
+                    ? 'bg-primary-500 text-white shadow-soft-lg'
+                    : 'text-gray-600 hover:text-primary-500 hover:bg-primary-50'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <Building2 className="w-5 h-5" />
+                  العيادات والأطباء
                 </div>
               </button>
             </nav>
@@ -472,6 +486,8 @@ const ReceptionDashboard = () => {
             </CardContent>
           </Card>
         )}
+
+        {activeTab === 'clinics' && <ClinicsAndDoctorsPage />}
       </main>
 
       {/* Booking Wizard Modal */}

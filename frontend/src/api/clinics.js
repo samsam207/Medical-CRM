@@ -41,5 +41,11 @@ export const clinicsApi = {
   createService: async (clinicId, data) => {
     const response = await api.post(`/clinics/${clinicId}/services`, data)
     return response.data
+  },
+
+  // Delete clinic (admin only)
+  deleteClinic: async (id) => {
+    const response = await api.delete(`/clinics/${id}`)
+    return response.data
   }
 }

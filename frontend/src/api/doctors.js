@@ -1,33 +1,49 @@
-import { apiClient } from './client'
+import api from './client'
 
 export const doctorsApi = {
   // Get all doctors
-  getDoctors: async () => {
-    const response = await apiClient.get('/doctors')
+  getDoctors: async (params = {}) => {
+    const response = await api.get('/doctors', { params })
     return response.data
   },
 
-  // Get doctor by ID
+  // Get single doctor
   getDoctor: async (id) => {
-    const response = await apiClient.get(`/doctors/${id}`)
+    const response = await api.get(`/doctors/${id}`)
     return response.data
   },
 
   // Create doctor
   createDoctor: async (data) => {
-    const response = await apiClient.post('/doctors', data)
+    const response = await api.post('/doctors', data)
     return response.data
   },
 
   // Update doctor
   updateDoctor: async (id, data) => {
-    const response = await apiClient.put(`/doctors/${id}`, data)
+    const response = await api.put(`/doctors/${id}`, data)
     return response.data
   },
 
   // Delete doctor
   deleteDoctor: async (id) => {
-    const response = await apiClient.delete(`/doctors/${id}`)
+    const response = await api.delete(`/doctors/${id}`)
+    return response.data
+  },
+
+  // Get doctor schedule
+  getDoctorSchedule: async (id, date) => {
+    const response = await api.get(`/doctors/${id}/schedule`, {
+      params: { date }
+    })
+    return response.data
+  },
+
+  // Update doctor schedule
+  updateSchedule: async (id, scheduleData) => {
+    const response = await api.post(`/doctors/${id}/schedule`, {
+      schedule: scheduleData
+    })
     return response.data
   }
 }

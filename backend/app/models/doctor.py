@@ -44,9 +44,54 @@ class Doctor(db.Model):
         """Get working hours as dict"""
         return self.working_hours
     
-    def to_dict(self):
-        """Convert doctor to dictionary"""
-        return {
+    def get_availability_for_day(self, day_of_week):
+        """Get available hours for a specific day (0=Sunday, 6=Saturday)"""
+        from app.models.doctor_schedule import DoctorSchedule
+        schedule = DoctorSchedule.query.filter_by(
+            doctor_id=self.id,
+            day_of_week=day_of_week,
+            is_available=True
+        ).all()
+        return [s.hour for s in schedule]
+    
+    def is_available_at(self, day_of_week, hour):
+        """
+        Check if doctor is available at specific day and hour
+        Args:
+            day_of_week: 0=Monday, 6=Sunday (Python datetime.weekday() format)
+        Returns:
+            True if available, False otherwise
+        """
+        from app.models.doctor_schedule import DoctorSchedule
+        # Convert Python weekday (Monday=0) to our format (Sunday=0)
+        # Python: Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6
+        # Our DB: Sun=0, Mon=1, Tue=2, Wed=3, Thu=4, Fri=5, Sat=6
+        schedule = DoctorSchedule.query.filter_by(
+            doctor_id=self.id,
+            day_of_week=day_of_week,
+            hour=hour,
+            is_available=True
+        ).first()
+        return schedule is not None
+    
+    def get_full_schedule(self):
+        """Get complete 7x24 schedule"""
+        from app.models.doctor_schedule import DoctorSchedule
+        schedules = DoctorSchedule.query.filter_by(doctor_id=self.id).all()
+        schedule_dict = {}
+        for s in schedules:
+            if s.day_of_week not in schedule_dict:
+                schedule_dict[s.day_of_week] = {}
+            schedule_dict[s.day_of_week][s.hour] = s.is_available
+        return schedule_dict
+    
+    def to_dict(self, include_schedule=False):
+        """
+        Convert doctor to dictionary
+        Args:
+            include_schedule: If True, fetch and include schedule data (may cause N+1 if called in loop)
+        """
+        result = {
             'id': self.id,
             'user_id': self.user_id,
             'name': self.name,
@@ -57,6 +102,16 @@ class Doctor(db.Model):
             'share_percentage': self.share_percentage,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+        
+        # Only include schedule if explicitly requested (to avoid N+1 queries)
+        if include_schedule:
+            from app.models.doctor_schedule import DoctorSchedule
+            schedules = DoctorSchedule.query.filter_by(doctor_id=self.id).all()
+            result['schedule'] = [s.to_dict() for s in schedules]
+        else:
+            result['schedule'] = []
+        
+        return result
     
     def __repr__(self):
         return f'<Doctor {self.name} - {self.specialty}>'

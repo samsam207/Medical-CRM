@@ -4,6 +4,7 @@ from app import db
 from .user import User, TokenBlocklist
 from .clinic import Clinic
 from .doctor import Doctor
+from .doctor_schedule import DoctorSchedule
 from .patient import Patient
 from .service import Service
 from .appointment import Appointment
@@ -14,6 +15,6 @@ from .notification import Notification
 from .audit_log import AuditLog
 
 __all__ = [
-    'User', 'TokenBlocklist', 'Clinic', 'Doctor', 'Patient', 'Service',
+    'User', 'TokenBlocklist', 'Clinic', 'Doctor', 'DoctorSchedule', 'Patient', 'Service',
     'Appointment', 'Visit', 'Prescription', 'Payment', 'Notification', 'AuditLog'
 ]

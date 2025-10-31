@@ -9,6 +9,7 @@ import BookingWizard from '../components/BookingWizard'
 import { appointmentsApi, patientsApi, clinicsApi } from '../api'
 import { formatDate, formatTime } from '../utils/formatters'
 import { useMutationWithRefetch } from '../hooks/useMutationWithRefetch'
+import PageContainer from '../components/layout/PageContainer'
 
 const AppointmentsPage = () => {
   const [selectedDate, setSelectedDate] = useState(new Date())
@@ -121,7 +122,7 @@ const AppointmentsPage = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <PageContainer className="space-y-8">
       {/* Header */}
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Appointments</h1>
@@ -420,7 +421,7 @@ const AppointmentsPage = () => {
           </button>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }
 
