@@ -38,7 +38,10 @@ export const useMutationWithRefetch = ({
       // Invalidate and refetch all specified query keys
       for (const key of queryKeys) {
         await queryClient.invalidateQueries({ queryKey: key, exact: false })
-        await queryClient.refetchQueries({ queryKey: key })
+        // Refetch with exact match to ensure we get fresh data
+        await queryClient.refetchQueries({ queryKey: key, exact: true })
+        // Also refetch without exact match to catch all related queries
+        await queryClient.refetchQueries({ queryKey: key, exact: false })
       }
       
       // Show success toast

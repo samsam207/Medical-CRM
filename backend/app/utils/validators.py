@@ -1,6 +1,5 @@
 import re
-from datetime import datetime, time
-from flask import request
+from datetime import datetime
 from app.models.appointment import Appointment
 from app.models.doctor import Doctor
 from app import db
@@ -38,8 +37,21 @@ def validate_appointment_time(doctor_id, start_time, end_time, appointment_id=No
     appointment_date = start_time.date()
     day_name = appointment_date.strftime('%A')
     
-    if not doctor.is_working_on_day(day_name):
-        return False, f"Doctor doesn't work on {day_name}"
+    # First check DoctorSchedule table, then fall back to old working_days JSON
+    day_of_week = appointment_date.weekday()  # Python: Monday=0, Sunday=6
+    our_day_of_week = (day_of_week + 1) % 7  # Our format: Sunday=0, Monday=1, ..., Saturday=6
+    
+    from app.models.doctor_schedule import DoctorSchedule
+    has_schedule = DoctorSchedule.query.filter_by(
+        doctor_id=doctor_id,
+        day_of_week=our_day_of_week,
+        is_available=True
+    ).first() is not None
+    
+    # Only check old working_days if no DoctorSchedule entry exists
+    if not has_schedule:
+        if not doctor.is_working_on_day(day_name):
+            return False, f"Doctor doesn't work on {day_name}"
     
     # Check working hours
     working_hours = doctor.get_working_hours()

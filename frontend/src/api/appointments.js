@@ -26,14 +26,32 @@ export const appointmentsApi = {
   },
 
   // Cancel appointment
-  cancelAppointment: async (id) => {
-    const response = await api.delete(`/appointments/${id}`)
+  cancelAppointment: async (id, data = {}) => {
+    const response = await api.delete(`/appointments/${id}`, { data })
     return response.data
   },
 
   // Get available time slots
   getAvailableSlots: async (params) => {
     const response = await api.get('/appointments/available-slots', { params })
+    return response.data
+  },
+
+  // Get appointment statistics
+  getStatistics: async (params = {}) => {
+    const response = await api.get('/appointments/statistics', { params })
+    return response.data
+  },
+
+  // Get current appointment for doctor
+  getCurrentAppointment: async () => {
+    const response = await api.get('/appointments/current')
+    return response.data
+  },
+
+  // Complete current appointment (doctor only)
+  completeCurrentAppointment: async (notes = '') => {
+    const response = await api.post('/appointments/current/complete', { notes })
     return response.data
   }
 }

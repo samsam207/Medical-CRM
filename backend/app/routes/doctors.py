@@ -6,7 +6,8 @@ from app.models.clinic import Clinic
 from app.models.user import User, UserRole
 from app.models.doctor_schedule import DoctorSchedule
 from app.models.appointment import Appointment
-from app.utils.decorators import admin_required, validate_json, log_audit
+from app.utils.decorators import admin_required, receptionist_required, validate_json, log_audit
+from sqlalchemy import or_ as sql_or
 from datetime import datetime
 
 doctors_bp = Blueprint('doctors', __name__)
@@ -18,6 +19,8 @@ def get_doctors():
     from app.models.doctor_schedule import DoctorSchedule
     
     clinic_id = request.args.get('clinic_id', type=int)
+    specialty = request.args.get('specialty', '').strip()
+    search = request.args.get('search', '').strip()
     datetime_str = request.args.get('datetime')
     
     query = Doctor.query
@@ -26,7 +29,21 @@ def get_doctors():
     if clinic_id:
         query = query.filter_by(clinic_id=clinic_id)
     
-    doctors = query.all()
+    # Filter by specialty
+    if specialty:
+        query = query.filter(Doctor.specialty.ilike(f'%{specialty}%'))
+    
+    # Search by name or specialty
+    if search:
+        search_term = f'%{search}%'
+        query = query.filter(
+            sql_or(
+                Doctor.name.ilike(search_term),
+                Doctor.specialty.ilike(search_term)
+            )
+        )
+    
+    doctors = query.order_by(Doctor.name).all()
     doctor_ids = [doctor.id for doctor in doctors]
     
     # Pre-fetch all schedules in one query to avoid N+1
@@ -96,6 +113,19 @@ def create_doctor(data, current_user):
     if not clinic:
         return jsonify({'message': 'Clinic not found'}), 404
     
+    # Validate user_id if provided
+    user_id = data.get('user_id')
+    if user_id:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+        if user.role != UserRole.DOCTOR:
+            return jsonify({'message': 'User must have DOCTOR role'}), 400
+        # Check if user is already linked to another doctor
+        existing_doctor = Doctor.query.filter_by(user_id=user_id).first()
+        if existing_doctor:
+            return jsonify({'message': 'This user is already linked to another doctor'}), 400
+    
     # Create doctor
     doctor = Doctor(
         name=data['name'],
@@ -104,7 +134,7 @@ def create_doctor(data, current_user):
         working_hours=data['working_hours'],
         clinic_id=data['clinic_id'],
         share_percentage=data.get('share_percentage', 0.7),
-        user_id=data.get('user_id')
+        user_id=user_id
     )
     
     db.session.add(doctor)
@@ -113,10 +143,22 @@ def create_doctor(data, current_user):
     # Add schedule if provided
     if 'schedule' in data and data['schedule']:
         for schedule_item in data['schedule']:
+            # Validate hour (must be 0-23)
+            hour = schedule_item.get('hour')
+            day_of_week = schedule_item.get('day_of_week')
+            
+            # Validate hour range
+            if hour is None or not isinstance(hour, int) or hour < 0 or hour > 23:
+                continue  # Skip invalid hour entries
+            
+            # Validate day_of_week range (0-6)
+            if day_of_week is None or not isinstance(day_of_week, int) or day_of_week < 0 or day_of_week > 6:
+                continue  # Skip invalid day entries
+            
             schedule = DoctorSchedule(
                 doctor_id=doctor.id,
-                day_of_week=schedule_item['day_of_week'],
-                hour=schedule_item['hour'],
+                day_of_week=day_of_week,
+                hour=hour,
                 is_available=schedule_item.get('is_available', True)
             )
             db.session.add(schedule)
@@ -129,16 +171,21 @@ def create_doctor(data, current_user):
     }), 201
 
 @doctors_bp.route('/<int:doctor_id>', methods=['PUT'])
-@admin_required
+@receptionist_required
 @log_audit('update_doctor', 'doctor')
 def update_doctor(doctor_id, current_user):
-    """Update doctor information"""
+    """Update doctor information (receptionists can update schedules, admin can update all fields)"""
     from app.models.doctor_schedule import DoctorSchedule
     
     doctor = Doctor.query.get_or_404(doctor_id)
     data = request.get_json()
     
+    # Check if user is admin (for restricted fields)
+    is_admin = current_user.role == UserRole.ADMIN
+    
     # Update fields if provided
+    # Receptionists can update basic info and schedules
+    # Admin can update everything including sensitive fields
     if 'name' in data:
         doctor.name = data['name']
     if 'specialty' in data:
@@ -148,15 +195,38 @@ def update_doctor(doctor_id, current_user):
     if 'working_hours' in data:
         doctor.working_hours = data['working_hours']
     if 'clinic_id' in data:
-        # Validate clinic exists
-        clinic = Clinic.query.get(data['clinic_id'])
-        if not clinic:
-            return jsonify({'message': 'Clinic not found'}), 404
-        doctor.clinic_id = data['clinic_id']
+        # Only allow change if admin, or if value hasn't changed (receptionist can include it but not modify)
+        new_clinic_id = data['clinic_id']
+        if new_clinic_id != doctor.clinic_id:
+            if is_admin:
+                # Only admin can change clinic assignment
+                clinic = Clinic.query.get(new_clinic_id)
+                if not clinic:
+                    return jsonify({'message': 'Clinic not found'}), 404
+                doctor.clinic_id = new_clinic_id
+            else:
+                # Receptionists cannot change clinic assignment
+                return jsonify({'message': 'Only admin can change clinic assignment'}), 403
     if 'share_percentage' in data:
-        doctor.share_percentage = data['share_percentage']
+        # Only allow change if admin, or if value hasn't changed
+        new_share = data['share_percentage']
+        if abs(new_share - doctor.share_percentage) > 0.001:  # Allow for float comparison
+            if is_admin:
+                # Only admin can change share percentage
+                doctor.share_percentage = new_share
+            else:
+                # Receptionists cannot change share percentage
+                return jsonify({'message': 'Only admin can change share percentage'}), 403
     if 'user_id' in data:
-        doctor.user_id = data['user_id']
+        # Only allow change if admin, or if value hasn't changed
+        new_user_id = data.get('user_id')
+        if new_user_id != doctor.user_id:
+            if is_admin:
+                # Only admin can change user_id
+                doctor.user_id = new_user_id
+            else:
+                # Receptionists cannot change user_id
+                return jsonify({'message': 'Only admin can change user_id'}), 403
     
     # Update schedule if provided
     if 'schedule' in data and data['schedule'] is not None:
@@ -165,10 +235,22 @@ def update_doctor(doctor_id, current_user):
         
         # Add new schedule
         for schedule_item in data['schedule']:
+            # Validate hour (must be 0-23)
+            hour = schedule_item.get('hour')
+            day_of_week = schedule_item.get('day_of_week')
+            
+            # Validate hour range
+            if hour is None or not isinstance(hour, int) or hour < 0 or hour > 23:
+                continue  # Skip invalid hour entries
+            
+            # Validate day_of_week range (0-6)
+            if day_of_week is None or not isinstance(day_of_week, int) or day_of_week < 0 or day_of_week > 6:
+                continue  # Skip invalid day entries
+            
             schedule = DoctorSchedule(
                 doctor_id=doctor.id,
-                day_of_week=schedule_item['day_of_week'],
-                hour=schedule_item['hour'],
+                day_of_week=day_of_week,
+                hour=hour,
                 is_available=schedule_item.get('is_available', True)
             )
             db.session.add(schedule)
@@ -224,10 +306,10 @@ def get_doctor_schedule(doctor_id):
     }), 200
 
 @doctors_bp.route('/<int:doctor_id>/schedule', methods=['POST'])
-@admin_required
+@receptionist_required
 @log_audit('update_doctor_schedule', 'doctor_schedule')
 def update_doctor_schedule(doctor_id, current_user):
-    """Bulk update doctor schedule"""
+    """Bulk update doctor schedule (receptionists can update schedules)"""
     doctor = Doctor.query.get_or_404(doctor_id)
     data = request.get_json()
     
@@ -241,10 +323,22 @@ def update_doctor_schedule(doctor_id, current_user):
     
     # Add new schedule entries
     for schedule_item in schedule_data:
+        # Validate hour (must be 0-23)
+        hour = schedule_item.get('hour')
+        day_of_week = schedule_item.get('day_of_week')
+        
+        # Validate hour range
+        if hour is None or not isinstance(hour, int) or hour < 0 or hour > 23:
+            continue  # Skip invalid hour entries
+        
+        # Validate day_of_week range (0-6)
+        if day_of_week is None or not isinstance(day_of_week, int) or day_of_week < 0 or day_of_week > 6:
+            continue  # Skip invalid day entries
+        
         schedule = DoctorSchedule(
             doctor_id=doctor.id,
-            day_of_week=schedule_item['day_of_week'],
-            hour=schedule_item['hour'],
+            day_of_week=day_of_week,
+            hour=hour,
             is_available=schedule_item.get('is_available', True)
         )
         db.session.add(schedule)
@@ -255,3 +349,54 @@ def update_doctor_schedule(doctor_id, current_user):
         'message': 'Doctor schedule updated successfully',
         'doctor': doctor.to_dict()
     }), 200
+
+@doctors_bp.route('/statistics', methods=['GET'])
+@jwt_required()
+def get_doctor_statistics():
+    """Get doctor statistics"""
+    try:
+        clinic_id = request.args.get('clinic_id', type=int)
+        
+        # Build base query with filters
+        base_query = Doctor.query
+        if clinic_id:
+            base_query = base_query.filter_by(clinic_id=clinic_id)
+        
+        total_doctors = base_query.count()
+        
+        # Count by clinic
+        clinic_counts = {}
+        doctors_by_clinic_query = db.session.query(
+            Doctor.clinic_id,
+            db.func.count(Doctor.id).label('count')
+        )
+        if clinic_id:
+            doctors_by_clinic_query = doctors_by_clinic_query.filter_by(clinic_id=clinic_id)
+        doctors_by_clinic = doctors_by_clinic_query.group_by(Doctor.clinic_id).all()
+        
+        for clinic_id_val, count in doctors_by_clinic:
+            clinic = Clinic.query.get(clinic_id_val)
+            clinic_name = clinic.name if clinic else f'Clinic {clinic_id_val}'
+            clinic_counts[clinic_name] = count
+        
+        # Count by specialty
+        specialty_counts = {}
+        doctors_by_specialty_query = db.session.query(
+            Doctor.specialty,
+            db.func.count(Doctor.id).label('count')
+        )
+        if clinic_id:
+            doctors_by_specialty_query = doctors_by_specialty_query.filter_by(clinic_id=clinic_id)
+        doctors_by_specialty = doctors_by_specialty_query.group_by(Doctor.specialty).all()
+        
+        for specialty, count in doctors_by_specialty:
+            if specialty:
+                specialty_counts[specialty] = count
+        
+        return jsonify({
+            'total_doctors': total_doctors,
+            'by_clinic': clinic_counts,
+            'by_specialty': specialty_counts
+        }), 200
+    except Exception as e:
+        return jsonify({'message': f'Error retrieving statistics: {str(e)}'}), 500

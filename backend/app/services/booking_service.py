@@ -4,24 +4,89 @@ from app.models.doctor import Doctor
 from app.models.service import Service
 from app.utils.helpers import get_time_slots, is_business_hours, calculate_end_time
 from datetime import datetime, timedelta
-import json
 
 class BookingService:
     """Service for handling appointment booking logic"""
     
     def get_available_slots(self, doctor_id, date):
         """Get available time slots for a doctor on a specific date"""
+        from app.models.doctor_schedule import DoctorSchedule
+        
         doctor = Doctor.query.get(doctor_id)
         if not doctor:
             return []
         
-        # Get doctor's working hours
-        working_hours = doctor.get_working_hours()
-        start_hour = int(working_hours['start'].split(':')[0])
-        end_hour = int(working_hours['end'].split(':')[0])
+        # Get day of week for the date
+        # Python weekday(): Monday=0, Tuesday=1, ..., Sunday=6
+        # Our DB format: Sunday=0, Monday=1, ..., Saturday=6
+        python_weekday = date.weekday()  # Python: Monday=0, Sunday=6
+        our_day_of_week = (python_weekday + 1) % 7  # Convert to our format
         
-        # Generate time slots
-        slots = get_time_slots(start_hour, end_hour, 30, date)  # 30-minute slots
+        # Get doctor's schedule for this day from DoctorSchedule table
+        available_hours = set()
+        try:
+            doctor_schedules = DoctorSchedule.query.filter_by(
+                doctor_id=doctor_id,
+                day_of_week=our_day_of_week,
+                is_available=True
+            ).all()
+            
+            # Get available hours from DoctorSchedule
+            # Filter out invalid hours (must be 0-23) to prevent errors
+            if doctor_schedules:
+                available_hours = {s.hour for s in doctor_schedules if 0 <= s.hour <= 23}
+        except Exception as e:
+            # If DoctorSchedule table doesn't exist or query fails, fall back to JSON
+            doctor_schedules = []
+            available_hours = set()
+        
+        # If no schedule found in DoctorSchedule or no available hours, fall back to old JSON fields
+        if not available_hours:
+            # Get doctor's working hours from JSON
+            try:
+                working_hours = doctor.get_working_hours()
+                if working_hours and isinstance(working_hours, dict):
+                    start_hour = int(working_hours.get('start', '09:00').split(':')[0])
+                    end_hour = int(working_hours.get('end', '17:00').split(':')[0])
+                else:
+                    # Default working hours if JSON is invalid
+                    start_hour = 9
+                    end_hour = 17
+            except (ValueError, AttributeError, KeyError):
+                # Default working hours if parsing fails
+                start_hour = 9
+                end_hour = 17
+            
+            # Generate time slots based on working hours
+            slots = get_time_slots(start_hour, end_hour, 30, date) if start_hour < end_hour else []
+            
+            # Build available hours set from working hours (all hours in range)
+            available_hours = set(range(start_hour, end_hour))
+        else:
+            # Use DoctorSchedule table to get available hours
+            # Generate slots ONLY for hours that are in the doctor's schedule
+            # This ensures slots match exactly what was entered in the schedule
+            if available_hours:
+                # Filter out invalid hours (must be 0-23)
+                valid_hours = {h for h in available_hours if 0 <= h <= 23}
+                if not valid_hours:
+                    # No valid hours, fall back to default
+                    slots = []
+                    available_hours = set()
+                else:
+                    # Generate slots ONLY for each hour that is in the schedule
+                    # This ensures we don't generate slots for hours not in the schedule
+                    slots = []
+                    for hour in sorted(valid_hours):
+                        # Generate 30-minute slots for this hour (e.g., hour 9 → 9:00 and 9:30)
+                        hour_slots = get_time_slots(hour, hour + 1, 30, date)
+                        slots.extend(hour_slots)
+                    
+                    # Update available_hours to only valid hours
+                    available_hours = valid_hours
+            else:
+                # No available hours, return empty slots
+                slots = []
         
         # Get existing appointments for the date
         existing_appointments = db.session.query(Appointment).filter(
@@ -42,34 +107,69 @@ class BookingService:
                 occupied_times.add(current_time.strftime('%H:%M'))
                 current_time = (datetime.combine(date, current_time) + timedelta(minutes=30)).time()
         
-        # Filter out occupied slots
+        # Get current UTC datetime for comparison
+        now_utc = datetime.utcnow()
+        current_date = now_utc.date()
+        current_time = now_utc.time()
+        
+        # Filter out occupied slots and check availability
         available_slots = []
         for slot in slots:
             slot_time = datetime.strptime(slot['start_time'], '%H:%M').time()
-            if slot_time.strftime('%H:%M') not in occupied_times:
-                # Check if slot is in the future
-                slot_datetime = datetime.combine(date, slot_time)
-                if slot_datetime > datetime.now():
-                    available_slots.append({
-                        'start_time': slot['start_time'],
-                        'end_time': slot['end_time'],
-                        'available': True
-                    })
-                else:
-                    available_slots.append({
-                        'start_time': slot['start_time'],
-                        'end_time': slot['end_time'],
-                        'available': False,
-                        'reason': 'Past time'
-                    })
-            else:
+            slot_hour = slot_time.hour
+            
+            # Check if this hour is in doctor's available schedule
+            if slot_hour not in available_hours:
+                available_slots.append({
+                    'start_time': slot['start_time'],
+                    'end_time': slot['end_time'],
+                    'available': False,
+                    'reason': 'Not in schedule'
+                })
+                continue
+            
+            # Check if slot is occupied by existing appointment
+            if slot_time.strftime('%H:%M') in occupied_times:
                 available_slots.append({
                     'start_time': slot['start_time'],
                     'end_time': slot['end_time'],
                     'available': False,
                     'reason': 'Booked'
                 })
+                continue
+            
+            # Check if slot is in the past (for today only)
+            if date == current_date:
+                # For today, only show slots in the future
+                # Compare time components (hour and minute) to avoid timezone/datetime comparison issues
+                slot_hour = slot_time.hour
+                slot_minute = slot_time.minute
+                current_hour = current_time.hour
+                current_minute = current_time.minute
+                
+                # Check if slot time is in the past
+                # Add a small buffer (15 minutes) to allow booking near current time
+                is_past = (slot_hour < current_hour) or \
+                         (slot_hour == current_hour and slot_minute < current_minute - 15)
+                
+                if is_past:
+                    available_slots.append({
+                        'start_time': slot['start_time'],
+                        'end_time': slot['end_time'],
+                        'available': False,
+                        'reason': 'Past time'
+                    })
+                    continue
+            
+            # Slot is available
+            available_slots.append({
+                'start_time': slot['start_time'],
+                'end_time': slot['end_time'],
+                'available': True
+            })
         
+        # Return only available slots (filter out unavailable ones for cleaner response)
+        # Actually, let's return all slots with availability flag so UI can show why slots aren't available
         return available_slots
     
     def create_appointment(self, data):

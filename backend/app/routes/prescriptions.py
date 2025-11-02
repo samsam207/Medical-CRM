@@ -1,5 +1,5 @@
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask import Blueprint, request, jsonify, current_app
+from flask_jwt_extended import jwt_required
 from app import db
 from app.models.prescription import Prescription
 from app.models.visit import Visit, VisitStatus
@@ -7,7 +7,6 @@ from app.models.doctor import Doctor
 from app.models.user import User, UserRole
 from app.utils.decorators import doctor_required, validate_json, log_audit
 from app.utils.validators import validate_file_upload, sanitize_filename
-from flask import current_app
 import os
 from datetime import datetime
 

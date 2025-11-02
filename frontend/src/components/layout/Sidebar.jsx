@@ -2,31 +2,37 @@ import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { 
   Home, Calendar, Users, User, CreditCard, Building2, Settings,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Stethoscope
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useAuthStore } from '../../stores/authStore'
-
-const sidebarItems = [
-  { icon: Home, label: 'لوحة التحكم', path: '/reception' },
-  { icon: Calendar, label: 'المواعيد', path: '/reception/appointments' },
-  { icon: Users, label: 'إدارة الطوابير', path: '/reception/queue' },
-  { icon: User, label: 'المرضى', path: '/reception/patients' },
-  { icon: CreditCard, label: 'المدفوعات', path: '/reception/payments' },
-  { icon: Building2, label: 'العيادات والأطباء', path: '/reception/clinics-doctors' },
-  { icon: Settings, label: 'الإعدادات', path: '/reception/settings' },
-]
 
 const Sidebar = ({ onCollapseChange }) => {
   const [collapsed, setCollapsed] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
   const { user } = useAuthStore()
+  
+  const isDoctor = user?.role === 'doctor'
+  
+  const sidebarItems = [
+    { icon: Home, label: 'لوحة التحكم', path: '/reception/dashboard' },
+    { icon: Calendar, label: 'المواعيد', path: '/reception/appointments' },
+    { icon: Users, label: 'إدارة الطوابير', path: '/reception/queue' },
+    { icon: User, label: 'المرضى', path: '/reception/patients' },
+    { icon: CreditCard, label: 'المدفوعات', path: '/reception/payments' },
+    { icon: Building2, label: 'العيادات والأطباء', path: '/reception/clinics-doctors' },
+    ...(isDoctor ? [{ icon: Stethoscope, label: 'الموعد الحالي', path: '/doctor/current-appointment' }] : []),
+    { icon: Settings, label: 'الإعدادات', path: '/reception/settings' },
+  ]
 
   const isActive = (path) => {
     // Match exact path or sub-paths for dashboard
-    if (path === '/reception') {
-      return location.pathname === '/reception'
+    if (path === '/reception/dashboard') {
+      return location.pathname === '/reception/dashboard' || location.pathname === '/reception'
+    }
+    if (path === '/doctor/current-appointment') {
+      return location.pathname === '/doctor/current-appointment'
     }
     return location.pathname === path
   }

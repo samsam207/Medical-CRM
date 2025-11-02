@@ -11,6 +11,7 @@ class PaymentMethod(enum.Enum):
 class PaymentStatus(enum.Enum):
     PENDING = "pending"
     PARTIALLY_PAID = "partially_paid"
+    APPOINTMENT_COMPLETED = "appointment_completed"  # Appointment completed, waiting for payment
     PAID = "paid"
     REFUNDED = "refunded"
 

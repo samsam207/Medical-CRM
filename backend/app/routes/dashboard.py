@@ -10,7 +10,6 @@ from app.models.clinic import Clinic
 from app.models.notification import Notification
 from app.utils.decorators import doctor_required
 from datetime import datetime, timedelta
-import json
 
 dashboard_bp = Blueprint('dashboard', __name__)
 

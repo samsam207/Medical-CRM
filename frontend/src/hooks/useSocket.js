@@ -15,7 +15,6 @@ export const useSocket = () => {
   const connect = useCallback(() => {
     if (!isAuthenticated || !token || socketRef.current) return
 
-    console.log('Attempting socket connection...')
     setConnectionError(null)
 
     socketRef.current = io('http://localhost:5000', {
@@ -27,14 +26,12 @@ export const useSocket = () => {
 
     // Connection event handlers
     socketRef.current.on('connect', () => {
-      console.log('Socket connected')
       setIsConnected(true)
       setConnectionError(null)
       reconnectAttemptsRef.current = 0
     })
 
     socketRef.current.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason)
       setIsConnected(false)
       
       // Only attempt reconnection if it wasn't a manual disconnect
@@ -57,7 +54,6 @@ export const useSocket = () => {
     })
 
     socketRef.current.on('connected', (data) => {
-      console.log('Socket authenticated:', data)
       setIsConnected(true)
       setConnectionError(null)
     })
@@ -75,7 +71,6 @@ export const useSocket = () => {
     }
 
     const delay = baseReconnectDelay * Math.pow(2, reconnectAttemptsRef.current)
-    console.log(`Scheduling reconnection attempt ${reconnectAttemptsRef.current + 1} in ${delay}ms`)
     
     reconnectTimeoutRef.current = setTimeout(() => {
       reconnectAttemptsRef.current++

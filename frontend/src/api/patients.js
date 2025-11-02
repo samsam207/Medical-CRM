@@ -35,5 +35,20 @@ export const patientsApi = {
   searchPatients: async (query) => {
     const response = await api.get('/patients/search', { params: { q: query } })
     return response.data
+  },
+
+  // Export patients to CSV
+  exportPatients: async (params = {}) => {
+    const response = await api.get('/patients/export', { 
+      params,
+      responseType: 'blob'
+    })
+    return response.data
+  },
+
+  // Get patient statistics
+  getStatistics: async () => {
+    const response = await api.get('/patients/statistics')
+    return response.data
   }
 }

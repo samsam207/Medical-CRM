@@ -2,8 +2,8 @@ import api from './client'
 
 export const clinicsApi = {
   // Get all clinics
-  getClinics: async () => {
-    const response = await api.get('/clinics')
+  getClinics: async (params = {}) => {
+    const response = await api.get('/clinics', { params })
     return response.data
   },
 
@@ -43,9 +43,27 @@ export const clinicsApi = {
     return response.data
   },
 
+  // Update service for clinic (admin only)
+  updateService: async (clinicId, serviceId, data) => {
+    const response = await api.put(`/clinics/${clinicId}/services/${serviceId}`, data)
+    return response.data
+  },
+
+  // Delete service from clinic (admin only)
+  deleteService: async (clinicId, serviceId) => {
+    const response = await api.delete(`/clinics/${clinicId}/services/${serviceId}`)
+    return response.data
+  },
+
   // Delete clinic (admin only)
   deleteClinic: async (id) => {
     const response = await api.delete(`/clinics/${id}`)
+    return response.data
+  },
+
+  // Get clinic statistics
+  getStatistics: async (params = {}) => {
+    const response = await api.get('/clinics/statistics', { params })
     return response.data
   }
 }

@@ -1,17 +1,28 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { useSocket } from '../hooks/useSocket'
 import { dashboardApi } from '../api/dashboard'
+import { appointmentsApi } from '../api/appointments'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/common/Card'
 import Button from '../components/common/Button'
 import DoctorQueue from '../components/DoctorQueue'
-import { Users, Clock, CheckCircle, AlertCircle, Stethoscope, Wifi, WifiOff } from 'lucide-react'
+import { Users, Clock, CheckCircle, AlertCircle, Stethoscope, Wifi, WifiOff, FileText } from 'lucide-react'
 
 const DoctorDashboard = () => {
   const { user, token, logout } = useAuthStore()
+  const navigate = useNavigate()
   const { socket, isConnected, connectionError, reconnect, onAppointmentCreated, onAppointmentUpdated, onAppointmentCancelled } = useSocket()
   const [activeTab, setActiveTab] = useState('overview')
+  
+  // Check for current appointment
+  const { data: currentAppointment } = useQuery({
+    queryKey: ['current-appointment'],
+    queryFn: appointmentsApi.getCurrentAppointment,
+    refetchInterval: 5000,
+    retry: false
+  })
   
   // Debounced refetch to prevent excessive API calls
   const debounceTimeoutRef = useRef(null)
@@ -36,7 +47,6 @@ const DoctorDashboard = () => {
     
     // Set new timeout for batched refetch
     debounceTimeoutRef.current = setTimeout(() => {
-      console.log(`Batched refetch triggered by events: ${Array.from(pendingEventsRef.current).join(', ')}`)
       pendingEventsRef.current.clear()
       setLastUpdateTime(new Date().toLocaleTimeString())
       refetch()
@@ -54,52 +64,43 @@ const DoctorDashboard = () => {
 
       // Listen for queue updates
       socket.on('queue_updated', (data) => {
-        console.log('Doctor queue updated:', data)
         debouncedRefetch('queue_updated', data)
       })
 
       // Listen for new check-ins
       socket.on('new_checkin', (data) => {
-        console.log('New check-in for doctor:', data)
         debouncedRefetch('new_checkin', data)
       })
 
       // Listen for visit status changes
       socket.on('visit_status_changed', (data) => {
-        console.log('Visit status changed:', data)
         debouncedRefetch('visit_status_changed', data)
       })
 
       // Listen for appointment events
       socket.on('appointment_created', (data) => {
-        console.log('Appointment created:', data)
         debouncedRefetch('appointment_created', data)
       })
 
       socket.on('appointment_updated', (data) => {
-        console.log('Appointment updated:', data)
         debouncedRefetch('appointment_updated', data)
       })
 
       socket.on('appointment_cancelled', (data) => {
-        console.log('Appointment cancelled:', data)
         debouncedRefetch('appointment_cancelled', data)
       })
 
       // Listen for patient events
       socket.on('patient_created', (data) => {
-        console.log('Patient created:', data)
         debouncedRefetch('patient_created', data)
       })
 
       socket.on('patient_updated', (data) => {
-        console.log('Patient updated:', data)
         debouncedRefetch('patient_updated', data)
       })
 
       // Listen for payment events
       socket.on('payment_processed', (data) => {
-        console.log('Payment processed:', data)
         debouncedRefetch('payment_processed', data)
       })
 
@@ -224,6 +225,16 @@ const DoctorDashboard = () => {
                   Patient Queue
                 </div>
               </button>
+              {currentAppointment?.has_appointment && (
+                <button
+                  onClick={() => navigate('/doctor/current-appointment')}
+                  className="py-2 px-4 ml-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 text-sm font-medium"
+                >
+                  <FileText className="w-4 h-4" />
+                  Current Appointment
+                  <span className="ml-1 px-2 py-0.5 bg-blue-800 rounded-full text-xs">Active</span>
+                </button>
+              )}
             </nav>
           </div>
         </div>

@@ -1,12 +1,12 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required
 from app import db
 from app.models.payment import Payment, PaymentStatus
 from app.models.visit import Visit
 from app.models.appointment import Appointment
 from app.models.doctor import Doctor
 from app.models.clinic import Clinic
-from app.utils.decorators import receptionist_required
+from app.utils.decorators import receptionist_required, doctor_required
 from datetime import datetime, timedelta
 import csv
 import io
@@ -20,6 +20,7 @@ def get_revenue_report():
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     doctor_id = request.args.get('doctor_id', type=int)
+    clinic_id = request.args.get('clinic_id', type=int)
     
     # Default to last 30 days if no dates provided
     if not start_date:
@@ -33,15 +34,17 @@ def get_revenue_report():
     except ValueError:
         return jsonify({'message': 'Invalid date format. Use YYYY-MM-DD'}), 400
     
-    # Build query
-    query = db.session.query(Payment).filter(
+    # Build query with join to Visit for filtering
+    query = db.session.query(Payment).join(Visit, Payment.visit_id == Visit.id).filter(
         Payment.status == PaymentStatus.PAID,
         db.func.date(Payment.created_at) >= start_date_obj,
         db.func.date(Payment.created_at) <= end_date_obj
     )
     
+    if clinic_id:
+        query = query.filter(Visit.clinic_id == clinic_id)
     if doctor_id:
-        query = query.filter(Payment.visit.has(Visit.doctor_id == doctor_id))
+        query = query.filter(Visit.doctor_id == doctor_id)
     
     payments = query.all()
     
@@ -53,6 +56,8 @@ def get_revenue_report():
     # Group by doctor
     doctor_revenue = {}
     for payment in payments:
+        if not payment.visit or not payment.visit.doctor:
+            continue
         doctor_name = payment.visit.doctor.name
         if doctor_name not in doctor_revenue:
             doctor_revenue[doctor_name] = {
@@ -118,6 +123,8 @@ def get_visits_report():
     # Group by clinic
     clinic_stats = {}
     for visit in visits:
+        if not visit.clinic:
+            continue
         clinic_name = visit.clinic.name
         if clinic_name not in clinic_stats:
             clinic_stats[clinic_name] = {
@@ -139,6 +146,8 @@ def get_visits_report():
     # Group by doctor
     doctor_stats = {}
     for visit in visits:
+        if not visit.doctor:
+            continue
         doctor_name = visit.doctor.name
         if doctor_name not in doctor_stats:
             doctor_stats[doctor_name] = {
@@ -167,6 +176,8 @@ def get_doctor_shares_report():
     """Get doctor vs center shares report"""
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
+    doctor_id = request.args.get('doctor_id', type=int)
+    clinic_id = request.args.get('clinic_id', type=int)
     
     # Default to last 30 days if no dates provided
     if not start_date:
@@ -180,12 +191,20 @@ def get_doctor_shares_report():
     except ValueError:
         return jsonify({'message': 'Invalid date format. Use YYYY-MM-DD'}), 400
     
-    # Get payments in date range
-    payments = db.session.query(Payment).filter(
+    # Build query with join to Visit for filtering
+    query = db.session.query(Payment).join(Visit, Payment.visit_id == Visit.id).filter(
         Payment.status == PaymentStatus.PAID,
         db.func.date(Payment.created_at) >= start_date_obj,
         db.func.date(Payment.created_at) <= end_date_obj
-    ).all()
+    )
+    
+    if clinic_id:
+        query = query.filter(Visit.clinic_id == clinic_id)
+    if doctor_id:
+        query = query.filter(Visit.doctor_id == doctor_id)
+    
+    # Get payments in date range
+    payments = query.all()
     
     # Calculate totals
     total_revenue = sum(float(payment.amount_paid) for payment in payments)
@@ -195,6 +214,8 @@ def get_doctor_shares_report():
     # Group by doctor
     doctor_shares = {}
     for payment in payments:
+        if not payment.visit or not payment.visit.doctor:
+            continue
         doctor_name = payment.visit.doctor.name
         if doctor_name not in doctor_shares:
             doctor_shares[doctor_name] = {
@@ -224,12 +245,27 @@ def get_doctor_shares_report():
     }), 200
 
 @reports_bp.route('/export', methods=['GET'])
-@receptionist_required
+@jwt_required()
 def export_report():
     """Export report as CSV"""
+    from flask_jwt_extended import get_jwt_identity
+    from app.models.user import User, UserRole
+    
+    current_user_id = int(get_jwt_identity())
+    user = User.query.get(current_user_id)
+    
+    if not user:
+        return jsonify({'message': 'User not found'}), 401
+    
+    # Allow receptionist, admin, and doctor roles
+    if user.role not in [UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.DOCTOR]:
+        return jsonify({'message': 'Insufficient permissions'}), 403
+    
     report_type = request.args.get('type', 'revenue')
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
+    clinic_id = request.args.get('clinic_id', type=int)
+    doctor_id = request.args.get('doctor_id', type=int)
     
     # Default to last 30 days if no dates provided
     if not start_date:
@@ -251,13 +287,23 @@ def export_report():
         # Revenue report
         writer.writerow(['Date', 'Doctor', 'Patient', 'Service', 'Amount Paid', 'Doctor Share', 'Center Share'])
         
-        payments = db.session.query(Payment).filter(
+        # Build query with join to Visit for filtering
+        query = db.session.query(Payment).join(Visit, Payment.visit_id == Visit.id).filter(
             Payment.status == PaymentStatus.PAID,
             db.func.date(Payment.created_at) >= start_date_obj,
             db.func.date(Payment.created_at) <= end_date_obj
-        ).all()
+        )
+        
+        if clinic_id:
+            query = query.filter(Visit.clinic_id == clinic_id)
+        if doctor_id:
+            query = query.filter(Visit.doctor_id == doctor_id)
+        
+        payments = query.all()
         
         for payment in payments:
+            if not payment.visit or not payment.visit.doctor or not payment.visit.patient or not payment.visit.service:
+                continue
             writer.writerow([
                 payment.created_at.strftime('%Y-%m-%d'),
                 payment.visit.doctor.name,
@@ -272,12 +318,22 @@ def export_report():
         # Visits report
         writer.writerow(['Date', 'Clinic', 'Doctor', 'Patient', 'Service', 'Visit Type', 'Status'])
         
-        visits = db.session.query(Visit).filter(
+        # Build query with filters
+        query = db.session.query(Visit).filter(
             db.func.date(Visit.created_at) >= start_date_obj,
             db.func.date(Visit.created_at) <= end_date_obj
-        ).all()
+        )
+        
+        if clinic_id:
+            query = query.filter(Visit.clinic_id == clinic_id)
+        if doctor_id:
+            query = query.filter(Visit.doctor_id == doctor_id)
+        
+        visits = query.all()
         
         for visit in visits:
+            if not visit.clinic or not visit.doctor or not visit.patient or not visit.service:
+                continue
             writer.writerow([
                 visit.created_at.strftime('%Y-%m-%d'),
                 visit.clinic.name,

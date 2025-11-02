@@ -20,7 +20,7 @@ if not exist "frontend\node_modules" (
 
 echo Starting backend server...
 cd backend
-start "Medical CRM Backend" cmd /k "venv\Scripts\activate.bat && python run.py"
+start "Medical CRM Backend" cmd /k "venv\Scripts\activate.bat && py run.py"
 
 echo Waiting for backend to start...
 timeout /t 3 /nobreak >nul

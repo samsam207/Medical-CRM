@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { queueApi } from '../api/queue'
 import { Card, CardHeader, CardTitle, CardContent } from './common/Card'
 import Button from './common/Button'
 import Badge from './common/Badge'
-import { Clock, User, Phone, Stethoscope, CheckCircle, AlertCircle, Play, Pause, SkipForward, Bell } from 'lucide-react'
+import { Clock, User, Phone, Stethoscope, CheckCircle, AlertCircle, Play, Pause, SkipForward, Bell, FileText } from 'lucide-react'
 
 const DoctorQueue = ({ doctorId, onQueueUpdate }) => {
+  const navigate = useNavigate()
   const [currentPatient, setCurrentPatient] = useState(null)
   const [notes, setNotes] = useState('')
   const queryClient = useQueryClient()
@@ -35,8 +37,11 @@ const DoctorQueue = ({ doctorId, onQueueUpdate }) => {
     onSuccess: (data) => {
       queryClient.invalidateQueries(['doctor-queue', doctorId])
       queryClient.invalidateQueries(['dashboard-stats'])
+      queryClient.invalidateQueries(['current-appointment'])
       setCurrentPatient(data.visit)
       onQueueUpdate?.(data)
+      // Navigate to current appointment page when consultation starts
+      navigate('/doctor/current-appointment')
     }
   })
 
@@ -401,24 +406,36 @@ const DoctorQueue = ({ doctorId, onQueueUpdate }) => {
                 key={visit.id}
                 className="flex items-center justify-between p-3 border rounded-lg bg-green-50"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-1">
                   <div className="flex items-center gap-2">
                     {getStatusIcon(visit.status)}
                     <span className="font-bold text-lg">#{visit.queue_number}</span>
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <div className="font-medium">{visit.patient_name}</div>
                     <div className="text-sm text-gray-600">
                       {visit.service_name}
                     </div>
-                    <div className="text-sm text-gray-500">
-                      Started: {formatTime(visit.consultation_start_time)}
-                    </div>
+                    {visit.consultation_start_time && (
+                      <div className="text-sm text-gray-500">
+                        Started: {formatTime(visit.consultation_start_time)}
+                      </div>
+                    )}
                   </div>
+                  <Button
+                    onClick={() => navigate('/doctor/current-appointment')}
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700 flex items-center gap-2"
+                  >
+                    <FileText className="w-4 h-4" />
+                    View Appointment
+                  </Button>
                 </div>
-                <Badge className={getStatusColor(visit.status)}>
-                  {visit.status.replace('_', ' ')}
-                </Badge>
+                <div className="ml-4">
+                  <Badge className={getStatusColor(visit.status)}>
+                    {visit.status.replace('_', ' ')}
+                  </Badge>
+                </div>
               </div>
             ))}
 

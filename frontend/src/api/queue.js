@@ -40,20 +40,27 @@ export const queueApi = {
   },
 
   // Get queue organized by phases
-  getQueuePhases: async (clinicId, date) => {
-    const response = await apiClient.get(`/queue/phases/${clinicId}`, {
-      params: { date }
-    })
+  getQueuePhases: async (clinicId, date, doctorId = null) => {
+    const params = { date }
+    if (doctorId) params.doctor_id = doctorId
+    
+    const response = await apiClient.get(`/queue/phases/${clinicId}`, { params })
     return response.data
   },
 
   // Move patient between phases
-  movePatientPhase: async (visitId, fromPhase, toPhase) => {
-    const response = await apiClient.post('/queue/phases/move', {
-      visit_id: visitId,
+  movePatientPhase: async (visitId, fromPhase, toPhase, appointmentId = null) => {
+    const payload = {
       from_phase: fromPhase,
       to_phase: toPhase
-    })
+    }
+    if (visitId) {
+      payload.visit_id = visitId
+    }
+    if (appointmentId) {
+      payload.appointment_id = appointmentId
+    }
+    const response = await apiClient.post('/queue/phases/move', payload)
     return response.data
   },
 

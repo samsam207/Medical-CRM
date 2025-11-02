@@ -10,8 +10,9 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from app import db, limiter
 from app.models.user import User, TokenBlocklist, UserRole
+from app.models.doctor import Doctor
 from app.models.audit_log import AuditLog
-from app.utils.decorators import validate_json
+from app.utils.decorators import validate_json, receptionist_required
 from app.utils.validators import validate_phone_number
 from datetime import datetime
 
@@ -46,11 +47,19 @@ def login(data):
     db.session.add(audit_log)
     db.session.commit()
     
+    # Get doctor info if user is a doctor
+    user_dict = user.to_dict()
+    if user.role == UserRole.DOCTOR:
+        doctor = Doctor.query.filter_by(user_id=user.id).first()
+        if doctor:
+            user_dict['doctor_id'] = doctor.id
+            user_dict['clinic_id'] = doctor.clinic_id
+    
     return jsonify({
         'message': 'Login successful',
         'access_token': access_token,
         'refresh_token': refresh_token,
-        'user': user.to_dict()
+        'user': user_dict
     }), 200
 
 @auth_bp.route('/refresh', methods=['POST'])
@@ -103,8 +112,17 @@ def get_current_user():
     if not user:
         return jsonify({'message': 'User not found'}), 401
     
+    user_dict = user.to_dict()
+    
+    # Add doctor info if user is a doctor
+    if user.role == UserRole.DOCTOR:
+        doctor = Doctor.query.filter_by(user_id=user.id).first()
+        if doctor:
+            user_dict['doctor_id'] = doctor.id
+            user_dict['clinic_id'] = doctor.clinic_id
+    
     return jsonify({
-        'user': user.to_dict()
+        'user': user_dict
     }), 200
 
 @auth_bp.route('/change-password', methods=['POST'])
@@ -141,6 +159,50 @@ def change_password(data):
     db.session.commit()
     
     return jsonify({'message': 'Password changed successfully'}), 200
+
+@auth_bp.route('/users', methods=['GET'])
+@receptionist_required
+def get_users(current_user):
+    """Get users with optional role filter (receptionist/admin only)"""
+    role_filter = request.args.get('role')
+    
+    query = User.query
+    
+    if role_filter:
+        try:
+            role = UserRole(role_filter.upper())
+            query = query.filter_by(role=role)
+        except ValueError:
+            return jsonify({'message': 'Invalid role'}), 400
+    
+    users = query.order_by(User.username).all()
+    
+    return jsonify({
+        'users': [user.to_dict() for user in users]
+    }), 200
+
+@auth_bp.route('/users/available-doctors', methods=['GET'])
+@receptionist_required
+def get_available_doctor_users(current_user):
+    """Get doctor users that don't have a doctor record yet (for linking to doctors)"""
+    # Get all doctor users
+    doctor_users = User.query.filter_by(role=UserRole.DOCTOR).all()
+    
+    # Get all existing doctor records with user_id set
+    existing_doctor_user_ids = db.session.query(Doctor.user_id).filter(
+        Doctor.user_id.isnot(None)
+    ).distinct().all()
+    existing_user_ids = [row[0] for row in existing_doctor_user_ids]
+    
+    # Filter to only users that don't have a doctor record
+    available_users = [
+        user.to_dict() for user in doctor_users 
+        if user.id not in existing_user_ids
+    ]
+    
+    return jsonify({
+        'users': available_users
+    }), 200
 
 @auth_bp.route('/users', methods=['POST'])
 @jwt_required()

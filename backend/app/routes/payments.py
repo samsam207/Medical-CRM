@@ -1,5 +1,5 @@
-from flask import Blueprint, request, jsonify, send_file, make_response
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask import Blueprint, request, jsonify, send_file
+from flask_jwt_extended import jwt_required
 from app import db, cache
 from app.models.payment import Payment, PaymentMethod, PaymentStatus
 from app.models.visit import Visit, VisitStatus
@@ -19,24 +19,42 @@ payments_bp = Blueprint('payments', __name__)
 def get_payments():
     """Get payments with optional filters"""
     try:
+        
         patient_id = request.args.get('patient_id', type=int)
+        visit_id = request.args.get('visit_id', type=int)
+        clinic_id = request.args.get('clinic_id', type=int)
+        doctor_id = request.args.get('doctor_id', type=int)
         status = request.args.get('status')
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
+        date = request.args.get('date')  # Single date filter
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 50, type=int)
         
-        query = Payment.query
+        # Join with Visit table for clinic and doctor filtering
+        query = Payment.query.join(Visit, Payment.visit_id == Visit.id)
         
         if patient_id:
             query = query.filter(Payment.patient_id == patient_id)
+        if visit_id:
+            query = query.filter(Payment.visit_id == visit_id)
+        if clinic_id:
+            query = query.filter(Visit.clinic_id == clinic_id)
+        if doctor_id:
+            query = query.filter(Visit.doctor_id == doctor_id)
         if status:
             try:
                 status_enum = PaymentStatus(status)
                 query = query.filter(Payment.status == status_enum)
             except ValueError:
                 return jsonify({'message': 'Invalid status'}), 400
-        if start_date:
+        if date:
+            try:
+                date_obj = datetime.strptime(date, '%Y-%m-%d').date()
+                query = query.filter(db.func.date(Payment.created_at) == date_obj)
+            except ValueError:
+                return jsonify({'message': 'Invalid date format. Use YYYY-MM-DD'}), 400
+        elif start_date:
             try:
                 start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
                 query = query.filter(db.func.date(Payment.created_at) >= start_date_obj)
@@ -152,8 +170,8 @@ def process_existing_payment(payment_id, data, current_user):
     payment = Payment.query.get_or_404(payment_id)
     
     # Check if payment is pending or partially paid
-    if payment.status not in [PaymentStatus.PENDING, PaymentStatus.PARTIALLY_PAID]:
-        return jsonify({'message': 'Only pending or partially paid payments can be processed'}), 400
+    if payment.status not in [PaymentStatus.PENDING, PaymentStatus.PARTIALLY_PAID, PaymentStatus.APPOINTMENT_COMPLETED]:
+        return jsonify({'message': 'Only pending, partially paid, or appointment completed payments can be processed'}), 400
     
     # Validate payment method
     try:
@@ -224,7 +242,7 @@ def process_existing_payment(payment_id, data, current_user):
         socketio.emit('queue_updated', doctor_queue_data, room=f'doctor_{visit.doctor_id}')
     
     # Invalidate cache
-    cache.delete_memoized(get_payments)
+    cache.clear()
     
     return jsonify({
         'message': 'Payment processed successfully',
@@ -318,15 +336,139 @@ def refund_payment(payment_id, current_user):
         'payment': payment.to_dict()
     }), 200
 
+@payments_bp.route('/statistics', methods=['GET'])
+@jwt_required()
+def get_payment_statistics():
+    """Get payment statistics"""
+    try:
+        from app.models.visit import Visit
+        clinic_id = request.args.get('clinic_id', type=int)
+        doctor_id = request.args.get('doctor_id', type=int)
+        
+        # Build base query with filters
+        base_query = Payment.query
+        if clinic_id or doctor_id:
+            # Join with visits to filter by clinic/doctor
+            base_query = base_query.join(Visit)
+            if clinic_id:
+                base_query = base_query.filter(Visit.clinic_id == clinic_id)
+            if doctor_id:
+                base_query = base_query.filter(Visit.doctor_id == doctor_id)
+        
+        # Get total payments
+        total_payments = base_query.count()
+        
+        # Count by status
+        pending_count = base_query.filter_by(status=PaymentStatus.PENDING).count()
+        partially_paid_count = base_query.filter_by(status=PaymentStatus.PARTIALLY_PAID).count()
+        paid_count = base_query.filter_by(status=PaymentStatus.PAID).count()
+        refunded_count = base_query.filter_by(status=PaymentStatus.REFUNDED).count()
+        
+        # Count by method
+        cash_count = base_query.filter_by(payment_method=PaymentMethod.CASH).count()
+        visa_count = base_query.filter_by(payment_method=PaymentMethod.VISA).count()
+        bank_transfer_count = base_query.filter_by(payment_method=PaymentMethod.BANK_TRANSFER).count()
+        
+        # Calculate totals - need to rebuild query for aggregations
+        revenue_query = db.session.query(db.func.sum(Payment.amount_paid))
+        if clinic_id or doctor_id:
+            revenue_query = revenue_query.join(Visit)
+            if clinic_id:
+                revenue_query = revenue_query.filter(Visit.clinic_id == clinic_id)
+            if doctor_id:
+                revenue_query = revenue_query.filter(Visit.doctor_id == doctor_id)
+        total_revenue = revenue_query.filter(Payment.status == PaymentStatus.PAID).scalar() or 0
+        
+        # Total refunds
+        refunds_query = db.session.query(db.func.sum(Payment.amount_paid))
+        if clinic_id or doctor_id:
+            refunds_query = refunds_query.join(Visit)
+            if clinic_id:
+                refunds_query = refunds_query.filter(Visit.clinic_id == clinic_id)
+            if doctor_id:
+                refunds_query = refunds_query.filter(Visit.doctor_id == doctor_id)
+        total_refunds = refunds_query.filter(Payment.status == PaymentStatus.REFUNDED).scalar() or 0
+        
+        # Pending amount
+        pending_query = db.session.query(db.func.sum(Payment.total_amount - Payment.amount_paid))
+        if clinic_id or doctor_id:
+            pending_query = pending_query.join(Visit)
+            if clinic_id:
+                pending_query = pending_query.filter(Visit.clinic_id == clinic_id)
+            if doctor_id:
+                pending_query = pending_query.filter(Visit.doctor_id == doctor_id)
+        pending_amount = pending_query.filter(
+            Payment.status.in_([PaymentStatus.PENDING, PaymentStatus.PARTIALLY_PAID])
+        ).scalar() or 0
+        
+        return jsonify({
+            'total': total_payments,
+            'total_payments': total_payments,  # Alias for frontend compatibility
+            'total_revenue': float(total_revenue),  # Alias for frontend compatibility
+            'pending_count': pending_count,  # Alias for frontend compatibility
+            'paid_count': paid_count,  # Alias for frontend compatibility
+            'pending_amount': float(pending_amount),  # Alias for frontend compatibility
+            'by_status': {
+                'pending': pending_count,
+                'partially_paid': partially_paid_count,
+                'paid': paid_count,
+                'refunded': refunded_count
+            },
+            'by_method': {
+                'cash': cash_count,
+                'visa': visa_count,
+                'bank_transfer': bank_transfer_count
+            },
+            'totals': {
+                'revenue': float(total_revenue),
+                'refunds': float(total_refunds),
+                'pending_amount': float(pending_amount)
+            }
+        }), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'message': f'Error retrieving statistics: {str(e)}'}), 500
+
 @payments_bp.route('/export', methods=['GET'])
 @jwt_required()
 def export_payments():
     """Export payments to Excel file"""
+    
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     date = request.args.get('date')  # Single date for convenience
+    clinic_id = request.args.get('clinic_id', type=int)
+    doctor_id = request.args.get('doctor_id', type=int)
+    status = request.args.get('status')
+    method = request.args.get('method')
     
-    query = Payment.query
+    # Join with Visit table for clinic and doctor filtering
+    query = Payment.query.join(Visit, Payment.visit_id == Visit.id)
+    
+    # Filter by clinic
+    if clinic_id:
+        query = query.filter(Visit.clinic_id == clinic_id)
+    
+    # Filter by doctor
+    if doctor_id:
+        query = query.filter(Visit.doctor_id == doctor_id)
+    
+    # Filter by status
+    if status:
+        try:
+            status_enum = PaymentStatus(status)
+            query = query.filter(Payment.status == status_enum)
+        except ValueError:
+            return jsonify({'message': 'Invalid status'}), 400
+    
+    # Filter by method
+    if method:
+        try:
+            method_enum = PaymentMethod(method)
+            query = query.filter(Payment.payment_method == method_enum)
+        except ValueError:
+            return jsonify({'message': 'Invalid payment method'}), 400
     
     # Handle date range or single date
     if date:
@@ -349,8 +491,8 @@ def export_payments():
             except ValueError:
                 return jsonify({'message': 'Invalid end_date format. Use YYYY-MM-DD'}), 400
     
-    # Get payments with related data
-    payments = query.join(Visit).join(Patient).options(
+    # Get payments with related data (already joined Visit above, now eager load relationships)
+    payments = query.options(
         db.joinedload(Payment.visit).joinedload(Visit.patient),
         db.joinedload(Payment.visit).joinedload(Visit.doctor),
         db.joinedload(Payment.visit).joinedload(Visit.clinic),

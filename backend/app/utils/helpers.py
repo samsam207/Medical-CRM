@@ -72,8 +72,24 @@ def get_time_slots(start_hour=9, end_hour=17, slot_duration=30, date=None):
     if date is None:
         date = datetime.now().date()
     
+    # Ensure hours are within valid range (0-23)
+    start_hour = max(0, min(23, int(start_hour)))
+    # For end_hour, allow 24 to mean "up to but not including 24:00" (i.e., up to 23:30)
+    end_hour = max(0, min(24, int(end_hour)))
+    
+    # If end_hour is 24, convert to 23:59:59 for comparison
+    # But we'll generate slots up to 23:30 (last 30-minute slot)
+    if end_hour == 24:
+        end_hour_for_time = 23
+        end_minute_for_time = 59
+        # But we only want slots up to 23:30, so set end_time to 23:30
+        end_time = datetime.combine(date, datetime.min.time().replace(hour=23, minute=30, second=0, microsecond=0))
+    else:
+        end_hour_for_time = end_hour
+        end_minute_for_time = 0
+        end_time = datetime.combine(date, datetime.min.time().replace(hour=end_hour_for_time, minute=end_minute_for_time, second=0, microsecond=0))
+    
     current_time = datetime.combine(date, datetime.min.time().replace(hour=start_hour, minute=0, second=0, microsecond=0))
-    end_time = datetime.combine(date, datetime.min.time().replace(hour=end_hour, minute=0, second=0, microsecond=0))
     
     while current_time < end_time:
         slots.append({

@@ -7,7 +7,8 @@ import AppointmentsPage from './pages/AppointmentsPage'
 import PaymentsPage from './pages/PaymentsPage'
 import ReportsPage from './pages/ReportsPage'
 import QueueManagementPage from './pages/QueueManagementPage'
-import ClinicsDoctorsPage from './pages/ClinicsDoctorsPage'
+import ClinicsAndDoctorsPage from './pages/ClinicsAndDoctorsPage'
+import CurrentAppointmentPage from './pages/CurrentAppointmentPage'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import AppShell from './components/layout/AppShell'
@@ -24,14 +25,18 @@ function App() {
               element={<Login />}
             />
             <Route 
-              path="/reception" 
+              path="/reception/dashboard" 
               element={
-                <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
+                <ProtectedRoute allowedRoles={['receptionist', 'admin', 'doctor']}>
                   <AppShell>
                     <DashboardPage />
                   </AppShell>
                 </ProtectedRoute>
               } 
+            />
+            <Route 
+              path="/reception" 
+              element={<Navigate to="/reception/dashboard" replace />} 
             />
             <Route 
               path="/doctor" 
@@ -44,7 +49,7 @@ function App() {
             <Route 
               path="/reception/patients" 
               element={
-                <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
+                <ProtectedRoute allowedRoles={['receptionist', 'admin', 'doctor']}>
                   <AppShell>
                     <PatientsListPage />
                   </AppShell>
@@ -54,7 +59,7 @@ function App() {
             <Route 
               path="/reception/appointments" 
               element={
-                <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
+                <ProtectedRoute allowedRoles={['receptionist', 'admin', 'doctor']}>
                   <AppShell>
                     <AppointmentsPage />
                   </AppShell>
@@ -64,7 +69,7 @@ function App() {
             <Route 
               path="/reception/payments" 
               element={
-                <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
+                <ProtectedRoute allowedRoles={['receptionist', 'admin', 'doctor']}>
                   <AppShell>
                     <PaymentsPage />
                   </AppShell>
@@ -74,7 +79,7 @@ function App() {
             <Route 
               path="/reception/reports" 
               element={
-                <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
+                <ProtectedRoute allowedRoles={['receptionist', 'admin', 'doctor']}>
                   <AppShell>
                     <ReportsPage />
                   </AppShell>
@@ -84,9 +89,9 @@ function App() {
             <Route 
               path="/reception/clinics-doctors" 
               element={
-                <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
+                <ProtectedRoute allowedRoles={['receptionist', 'admin', 'doctor']}>
                   <AppShell>
-                    <ClinicsDoctorsPage />
+                    <ClinicsAndDoctorsPage />
                   </AppShell>
                 </ProtectedRoute>
               } 
@@ -94,9 +99,19 @@ function App() {
             <Route 
               path="/reception/queue" 
               element={
-                <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
+                <ProtectedRoute allowedRoles={['receptionist', 'admin', 'doctor']}>
                   <AppShell>
                     <QueueManagementPage />
+                  </AppShell>
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/doctor/current-appointment" 
+              element={
+                <ProtectedRoute allowedRoles={['doctor', 'admin']}>
+                  <AppShell>
+                    <CurrentAppointmentPage />
                   </AppShell>
                 </ProtectedRoute>
               } 

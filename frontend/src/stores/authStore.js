@@ -20,7 +20,10 @@ const useAuthStore = create(
           // Normalize role to lowercase for consistent frontend checks
           const normalizedUser = {
             ...user,
-            role: (user?.role || '').toString().toLowerCase()
+            role: (user?.role || '').toString().toLowerCase(),
+            // Include doctor_id and clinic_id if present (for doctors)
+            doctor_id: user?.doctor_id || null,
+            clinic_id: user?.clinic_id || null
           }
           
           // Set token in API client
@@ -48,6 +51,44 @@ const useAuthStore = create(
           })
           return { success: false, error: errorMessage }
         }
+      },
+
+      // Fetch current user info (useful for refreshing doctor/clinic info)
+      fetchCurrentUser: async () => {
+        try {
+          const response = await api.get('/auth/me')
+          const { user } = response.data
+          // Normalize role to lowercase for consistent frontend checks
+          const normalizedUser = {
+            ...user,
+            role: (user?.role || '').toString().toLowerCase(),
+            // Include doctor_id and clinic_id if present (for doctors)
+            doctor_id: user?.doctor_id || null,
+            clinic_id: user?.clinic_id || null
+          }
+          
+          set({ user: normalizedUser })
+          return normalizedUser
+        } catch (error) {
+          console.error('Failed to fetch current user:', error)
+          return null
+        }
+      },
+
+      // Helper methods for doctor info
+      getDoctorId: () => {
+        const { user } = get()
+        return user?.doctor_id || null
+      },
+
+      getClinicId: () => {
+        const { user } = get()
+        return user?.clinic_id || null
+      },
+
+      isDoctor: () => {
+        const { user } = get()
+        return user?.role === 'doctor'
       },
 
       logout: async () => {
@@ -101,15 +142,26 @@ const useAuthStore = create(
       clearError: () => set({ error: null }),
 
       // Initialize auth state from stored token
-      initializeAuth: () => {
+      initializeAuth: async () => {
         const { token, user } = get()
         if (token) {
           api.defaults.headers.common['Authorization'] = `Bearer ${token}`
           // Ensure persisted user role stays normalized
           const normalizedUser = user
-            ? { ...user, role: (user.role || '').toString().toLowerCase() }
+            ? { 
+                ...user, 
+                role: (user.role || '').toString().toLowerCase(),
+                // Include doctor_id and clinic_id if present
+                doctor_id: user?.doctor_id || null,
+                clinic_id: user?.clinic_id || null
+              }
             : null
           set({ isAuthenticated: true, user: normalizedUser })
+          
+          // Fetch fresh user data to ensure doctor/clinic info is up to date
+          if (normalizedUser) {
+            await get().fetchCurrentUser()
+          }
         }
       }
     }),

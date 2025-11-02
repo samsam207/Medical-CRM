@@ -38,6 +38,8 @@ class QueueService:
         }
         
         for visit in visits:
+            if not visit.patient or not visit.doctor or not visit.service:
+                continue
             visit_info = {
                 'id': visit.id,
                 'queue_number': visit.queue_number,
@@ -90,6 +92,8 @@ class QueueService:
         }
         
         for visit in visits:
+            if not visit.patient or not visit.service:
+                continue
             visit_info = {
                 'id': visit.id,
                 'queue_number': visit.queue_number,
@@ -329,18 +333,25 @@ class QueueService:
         
         return appointments_data
 
-    def get_all_appointments_for_date(self, date, clinic_id=None):
+    def get_all_appointments_for_date(self, date, clinic_id=None, doctor_id=None):
         """Get all appointments for a specific date organized by queue phase"""
         from app.models.appointment import AppointmentStatus
         
-        # Get all appointments for the date (confirmed and completed)
+        # Get all appointments for the date (include all active statuses)
         query = db.session.query(Appointment).filter(
             db.func.date(Appointment.start_time) == date,
-            Appointment.status.in_([AppointmentStatus.CONFIRMED, AppointmentStatus.COMPLETED])
+            Appointment.status.in_([
+                AppointmentStatus.CONFIRMED, 
+                AppointmentStatus.CHECKED_IN,
+                AppointmentStatus.COMPLETED
+            ])
         )
         
         if clinic_id:
             query = query.filter(Appointment.clinic_id == clinic_id)
+        
+        if doctor_id:
+            query = query.filter(Appointment.doctor_id == doctor_id)
         
         appointments = query.order_by(Appointment.start_time).all()
         
@@ -351,22 +362,60 @@ class QueueService:
             visit = Visit.query.filter_by(appointment_id=apt.id).first()
             
             if visit:
-                # Map visit status to queue phase
+                from app.models.appointment import AppointmentStatus
+                from app.models.visit import VisitStatus
+                
                 visit_status = visit.status.value.lower()
-                if visit_status == 'waiting':
-                    queue_phase = 'waiting'
-                elif visit_status == 'called':
-                    queue_phase = 'waiting'  # Called patients are still in waiting phase
-                elif visit_status == 'in_progress':
-                    queue_phase = 'with_doctor'
-                elif visit_status == 'completed':
-                    queue_phase = 'completed'
+                
+                # Simplified logic: Determine phase based on appointment status and visit status
+                # Key rule: If appointment status is CONFIRMED, patient hasn't checked in yet
+                # If appointment status is CHECKED_IN or COMPLETED, patient has checked in
+                
+                if apt.status == AppointmentStatus.CONFIRMED:
+                    # Appointment is confirmed but patient hasn't checked in
+                    # Check if visit is auto-created (check_in_time equals appointment start_time)
+                    # Auto-created visits should appear in appointments_today
+                    if (visit.check_in_time and apt.start_time and 
+                        abs((visit.check_in_time - apt.start_time).total_seconds()) < 60):
+                        # Auto-created visit (check-in time matches appointment time within 1 minute)
+                        queue_phase = 'appointments_today'
+                        visit_status = 'scheduled'
+                    elif visit.status in [VisitStatus.CALLED, VisitStatus.IN_PROGRESS, VisitStatus.COMPLETED]:
+                        # Visit has progressed beyond auto-created state, but appointment status wasn't updated
+                        # This means patient has checked in - use visit status to determine phase
+                        if visit.status == VisitStatus.COMPLETED:
+                            queue_phase = 'completed'
+                        elif visit.status == VisitStatus.IN_PROGRESS:
+                            queue_phase = 'with_doctor'
+                        else:  # CALLED or WAITING
+                            queue_phase = 'waiting'
+                    else:
+                        # Visit exists but status suggests not checked in yet
+                        queue_phase = 'appointments_today'
+                        visit_status = 'scheduled'
                 else:
-                    queue_phase = 'appointments_today'
+                    # Appointment status is CHECKED_IN or COMPLETED - patient has checked in
+                    # Map visit status to queue phase
+                    if visit.status == VisitStatus.COMPLETED:
+                        queue_phase = 'completed'
+                    elif visit.status == VisitStatus.IN_PROGRESS:
+                        queue_phase = 'with_doctor'
+                    elif visit.status in [VisitStatus.WAITING, VisitStatus.CALLED]:
+                        queue_phase = 'waiting'
+                    else:
+                        queue_phase = 'waiting'  # Default fallback
             else:
-                # No visit means it's a scheduled appointment
+                # No visit means it's a scheduled appointment - patient hasn't checked in
                 queue_phase = 'appointments_today'
                 visit_status = 'scheduled'
+            
+            # Get payment for this visit if it exists
+            payment_id = None
+            if visit:
+                from app.models.payment import Payment
+                payment = Payment.query.filter_by(visit_id=visit.id).first()
+                if payment:
+                    payment_id = payment.id
             
             appointments_data.append({
                 'id': apt.id,
@@ -381,7 +430,8 @@ class QueueService:
                 'notes': apt.notes,
                 'visit_status': visit_status,
                 'queue_phase': queue_phase,
-                'visit_id': visit.id if visit else None
+                'visit_id': visit.id if visit else None,
+                'payment_id': payment_id
             })
         
         return appointments_data

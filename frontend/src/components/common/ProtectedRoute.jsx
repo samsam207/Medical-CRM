@@ -30,9 +30,8 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
 
   // Case-insensitive role comparison; if unauthorized, send to their dashboard
   if (allowedRoles.length > 0 && !allowedRoles.map(r => r.toLowerCase()).includes(user?.role?.toLowerCase())) {
-    const role = (user?.role || '').toLowerCase()
-    const fallback = role === 'doctor' ? '/doctor' : '/reception'
-    return <Navigate to={fallback} replace />
+    // Both doctors and receptionists go to /reception/dashboard
+    return <Navigate to="/reception/dashboard" replace />
   }
 
   return children

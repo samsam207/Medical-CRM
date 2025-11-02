@@ -6,8 +6,10 @@ import { Card } from '../components/common/Card'
 import { Spinner } from '../components/common/Spinner'
 import { reportsApi } from '../api'
 import { formatCurrency, formatDate } from '../utils/formatters'
+import { useDoctorFilters } from '../hooks/useDoctorFilters'
 
 const ReportsPage = () => {
+  const { addFilters } = useDoctorFilters()
   const [dateRange, setDateRange] = useState({
     start: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0]
@@ -17,30 +19,30 @@ const ReportsPage = () => {
   // Fetch revenue report
   const { data: revenueReport, isLoading: revenueLoading } = useQuery({
     queryKey: ['revenue-report', dateRange.start, dateRange.end],
-    queryFn: () => reportsApi.getRevenueReport({
+    queryFn: () => reportsApi.getRevenueReport(addFilters({
       start_date: dateRange.start,
       end_date: dateRange.end
-    }).then(res => res?.data || {}),
+    })).then(res => res?.data || {}),
     enabled: reportType === 'revenue'
   })
 
   // Fetch visits report
   const { data: visitsReport, isLoading: visitsLoading } = useQuery({
     queryKey: ['visits-report', dateRange.start, dateRange.end],
-    queryFn: () => reportsApi.getVisitsReport({
+    queryFn: () => reportsApi.getVisitsReport(addFilters({
       start_date: dateRange.start,
       end_date: dateRange.end
-    }).then(res => res?.data || {}),
+    })).then(res => res?.data || {}),
     enabled: reportType === 'visits'
   })
 
   // Fetch doctor shares report
   const { data: doctorSharesReport, isLoading: doctorSharesLoading } = useQuery({
     queryKey: ['doctor-shares-report', dateRange.start, dateRange.end],
-    queryFn: () => reportsApi.getDoctorSharesReport({
+    queryFn: () => reportsApi.getDoctorSharesReport(addFilters({
       start_date: dateRange.start,
       end_date: dateRange.end
-    }).then(res => res?.data || {}),
+    })).then(res => res?.data || {}),
     enabled: reportType === 'doctor-shares'
   })
 
@@ -48,12 +50,12 @@ const ReportsPage = () => {
 
   const handleExport = async (format = 'csv') => {
     try {
-      const response = await reportsApi.exportReport({
+      const response = await reportsApi.exportReport(addFilters({
         report_type: reportType,
         start_date: dateRange.start,
         end_date: dateRange.end,
         format
-      })
+      }))
       
       // Create download link
       const blob = new Blob([response.data], { type: 'text/csv' })

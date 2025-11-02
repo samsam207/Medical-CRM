@@ -24,7 +24,8 @@ const Login = () => {
   useEffect(() => {
     if (isAuthenticated && user) {
       const role = (user.role || '').toLowerCase()
-      const redirectPath = role === 'doctor' ? '/doctor' : '/reception'
+      // Both doctors and receptionists go to /reception/dashboard
+      const redirectPath = '/reception/dashboard'
       navigate(redirectPath, { replace: true })
     }
   }, [isAuthenticated, user, navigate])
@@ -45,8 +46,8 @@ const Login = () => {
     if (result.success) {
       // Get the updated user from the store after login
       const { user: currentUser } = useAuthStore.getState()
-      const role = (currentUser?.role || '').toLowerCase()
-      navigate(role === 'doctor' ? '/doctor' : '/reception', { replace: true })
+      // Both doctors and receptionists go to /reception/dashboard
+      navigate('/reception/dashboard', { replace: true })
     }
     
     setIsLoading(false)

@@ -44,5 +44,11 @@ export const paymentsApi = {
   refundPayment: async (id) => {
     const response = await api.post(`/payments/refund/${id}`)
     return response.data
+  },
+
+  // Get payment statistics
+  getStatistics: async () => {
+    const response = await api.get('/payments/statistics')
+    return response.data
   }
 }

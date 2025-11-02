@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { X, ChevronLeft, ChevronRight, Calendar, Clock, User, Stethoscope } from 'lucide-react'
 import { Button } from './common/Button'
@@ -11,8 +11,6 @@ import { validateForm, commonRules } from '../utils/validation'
 import { useMutationWithRefetch } from '../hooks/useMutationWithRefetch'
 
 const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
-  console.log('BookingWizard mounted, isOpen:', isOpen);
-  
   const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState({
     clinic_id: '',
@@ -81,30 +79,15 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
     return Object.keys(newErrors).length === 0
   }
 
-  // Test query
-  const { data: testData } = useQuery({
-    queryKey: ['test'],
-    queryFn: () => Promise.resolve({ message: 'test' }),
-    enabled: isOpen
-  })
-  
-  console.log('Test query data:', testData);
-
   // Fetch clinics
-  const { data: clinics = [], error: clinicsError, isLoading: clinicsLoading } = useQuery({
+  const { data: clinics = [] } = useQuery({
     queryKey: ['clinics', 'booking-wizard'],
     queryFn: async () => {
-      console.log('Fetching clinics...');
       const result = await clinicsApi.getClinics();
-      console.log('Clinics API result:', result);
       return result?.clinics || [];
     },
     enabled: isOpen
   })
-  
-  console.log('Clinics query result:', { clinics, clinicsError, clinicsLoading });
-  console.log('Form data:', formData);
-  console.log('Current step:', currentStep);
 
   // Fetch doctors for selected clinic
   const { data: doctors = [] } = useQuery({
@@ -113,11 +96,22 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
     enabled: !!formData.clinic_id && formData.clinic_id !== ''
   })
 
-  // Fetch services for selected clinic
+  // Fetch services for selected clinic (only active services for booking)
   const { data: services = [] } = useQuery({
     queryKey: ['services', formData.clinic_id],
-    queryFn: () => clinicsApi.getClinicServices(parseInt(formData.clinic_id)).then(res => res?.services || []),
-    enabled: !!formData.clinic_id && formData.clinic_id !== ''
+    queryFn: () => {
+      const clinicId = parseInt(formData.clinic_id)
+      // Validate clinic_id before making API call
+      if (!clinicId || isNaN(clinicId)) {
+        return Promise.resolve([])
+      }
+      return clinicsApi.getClinicServices(clinicId).then(res => {
+        // Filter to only show active services for booking
+        const allServices = res?.services || []
+        return allServices.filter(service => service.is_active !== false)
+      })
+    },
+    enabled: !!formData.clinic_id && formData.clinic_id !== '' && !isNaN(parseInt(formData.clinic_id))
   })
 
   // Search patients
@@ -134,7 +128,7 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
       doctor_id: formData.doctor_id,
       clinic_id: formData.clinic_id,
       date: selectedDate.toISOString().split('T')[0]
-    }).then(res => res.available_slots),
+    }).then(res => res.slots || res.available_slots || []),
     enabled: !!formData.doctor_id && !!formData.clinic_id
   })
 
@@ -154,7 +148,6 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
   const createPatientMutation = useMutation({
     mutationFn: (data) => patientsApi.createPatient(data),
     onSuccess: (response) => {
-      console.log('Patient creation response:', response)
       // Handle both response structures: response.data.patient.id and response.patient.id
       const patientId = response?.data?.patient?.id || response?.patient?.id
       if (patientId) {
@@ -164,7 +157,7 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
         // Invalidate patients query to refresh the list
         queryClient.invalidateQueries(['patients'])
       } else {
-        console.error('Invalid response structure:', response)
+        // Handle invalid response structure silently
       }
     }
   })
@@ -187,16 +180,9 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
   }
 
   const handleNext = useCallback(() => {
-    console.log('handleNext called:', { currentStep, formData });
     const isValid = validateStep(currentStep)
-    console.log('validateStep result:', isValid);
-    const canProceedResult = canProceed();
-    console.log('canProceed result:', canProceedResult);
     if (isValid && currentStep < 5) {
-      console.log('Moving to next step:', currentStep + 1);
       setCurrentStep(currentStep + 1)
-    } else {
-      console.log('Cannot proceed:', { isValid, currentStep, canProceedResult });
     }
   }, [currentStep, formData])
 
@@ -229,13 +215,10 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
   }
 
   const canProceed = () => {
-    console.log('canProceed check:', { currentStep, formData, clinic_id: formData.clinic_id, clinic_id_type: typeof formData.clinic_id });
     switch (currentStep) {
       case 1: 
         // Accept both string and number types for clinic_id
-        const clinicSelected = formData.clinic_id && formData.clinic_id !== '' && formData.clinic_id !== undefined;
-        console.log('Step 1 canProceed:', clinicSelected, 'clinic_id:', formData.clinic_id);
-        return clinicSelected;
+        return formData.clinic_id && formData.clinic_id !== '' && formData.clinic_id !== undefined;
       case 2: return !!formData.doctor_id && formData.doctor_id !== ''
       case 3: return !!formData.patient_id && formData.patient_id !== ''
       case 4: return !!formData.service_id && !!formData.start_time && formData.service_id !== '' && formData.start_time !== ''
@@ -248,12 +231,6 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
   const renderStep1 = () => (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold">Select Clinic</h3>
-      {clinicsLoading && (
-        <div className="text-blue-600 text-sm">Loading clinics...</div>
-      )}
-      {clinicsError && (
-        <div className="text-red-600 text-sm">Error loading clinics: {clinicsError.message}</div>
-      )}
       {errors.clinic_id && (
         <div className="text-red-600 text-sm">{errors.clinic_id}</div>
       )}
@@ -267,20 +244,14 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
                 : 'hover:bg-gray-50'
             }`}
             onClick={() => {
-              console.log('Clinic clicked:', clinic);
-              console.log('Clinic ID type:', typeof clinic.id, 'Value:', clinic.id);
-              setFormData(prev => {
-                const newData = { 
-                  ...prev, 
-                  clinic_id: String(clinic.id),
-                  doctor_id: '', // Reset doctor when clinic changes
-                  service_id: '', // Reset service when clinic changes
-                  start_time: '', // Reset time when clinic changes
-                  selectedClinic: clinic
-                };
-                console.log('Form data after clinic selection:', newData);
-                return newData;
-              });
+              setFormData(prev => ({
+                ...prev,
+                clinic_id: String(clinic.id),
+                doctor_id: '', // Reset doctor when clinic changes
+                service_id: '', // Reset service when clinic changes
+                start_time: '', // Reset time when clinic changes
+                selectedClinic: clinic
+              }));
             }}
           >
             <div className="flex items-center space-x-3">
@@ -503,26 +474,40 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
       {/* Service Selection */}
       <div className="space-y-2">
         <label className="block text-sm font-medium text-gray-700">Service</label>
-        <select
-          value={formData.service_id}
-          onChange={(e) => {
-            const serviceId = e.target.value;
-            const selectedService = services.find(s => s.id === parseInt(serviceId));
-            setFormData(prev => ({ 
-              ...prev, 
-              service_id: serviceId,
-              selectedService: selectedService
-            }));
-          }}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Select a service</option>
-          {services.map(service => (
-            <option key={service.id} value={service.id}>
-              {service.name} - ${service.price} ({service.duration} min)
-            </option>
-          ))}
-        </select>
+        {services.length === 0 ? (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p className="text-sm text-yellow-800 mb-2">
+              <strong>No services available for this clinic.</strong>
+            </p>
+            <p className="text-xs text-yellow-700">
+              Please add services for this clinic in the Clinics & Doctors management page before booking appointments.
+            </p>
+          </div>
+        ) : (
+          <select
+            value={formData.service_id}
+            onChange={(e) => {
+              const serviceId = e.target.value;
+              const selectedService = services.find(s => s.id === parseInt(serviceId));
+              setFormData(prev => ({ 
+                ...prev, 
+                service_id: serviceId,
+                selectedService: selectedService
+              }));
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Select a service</option>
+            {services.map(service => (
+              <option key={service.id} value={service.id}>
+                {service.name} - ${service.price} ({service.duration} min)
+              </option>
+            ))}
+          </select>
+        )}
+        {errors.service_id && (
+          <p className="text-red-500 text-sm">{errors.service_id}</p>
+        )}
       </div>
 
       {/* Date Selection */}

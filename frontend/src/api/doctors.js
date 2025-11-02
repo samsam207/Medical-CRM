@@ -45,5 +45,11 @@ export const doctorsApi = {
       schedule: scheduleData
     })
     return response.data
+  },
+
+  // Get doctor statistics
+  getStatistics: async (params = {}) => {
+    const response = await api.get('/doctors/statistics', { params })
+    return response.data
   }
 }

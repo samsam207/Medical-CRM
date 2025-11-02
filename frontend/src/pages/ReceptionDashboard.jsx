@@ -53,7 +53,6 @@ const ReceptionDashboard = () => {
     
     // Set new timeout for batched refetch
     debounceTimeoutRef.current = setTimeout(() => {
-      console.log(`Batched refetch triggered by events: ${Array.from(pendingEventsRef.current).join(', ')}`)
       pendingEventsRef.current.clear()
       setLastUpdateTime(new Date().toLocaleTimeString())
       refetch()
@@ -65,52 +64,43 @@ const ReceptionDashboard = () => {
     if (socket && isConnected) {
       // Listen for queue updates
       socket.on('queue_updated', (data) => {
-        console.log('Queue updated:', data)
         debouncedRefetch('queue_updated', data)
       })
 
       // Listen for new check-ins
       socket.on('new_checkin', (data) => {
-        console.log('New check-in:', data)
         debouncedRefetch('new_checkin', data)
       })
 
       // Listen for visit status changes
       socket.on('visit_status_changed', (data) => {
-        console.log('Visit status changed:', data)
         debouncedRefetch('visit_status_changed', data)
       })
 
       // Listen for appointment events
       socket.on('appointment_created', (data) => {
-        console.log('Appointment created:', data)
         debouncedRefetch('appointment_created', data)
       })
 
       socket.on('appointment_updated', (data) => {
-        console.log('Appointment updated:', data)
         debouncedRefetch('appointment_updated', data)
       })
 
       socket.on('appointment_cancelled', (data) => {
-        console.log('Appointment cancelled:', data)
         debouncedRefetch('appointment_cancelled', data)
       })
 
       // Listen for patient events
       socket.on('patient_created', (data) => {
-        console.log('Patient created:', data)
         debouncedRefetch('patient_created', data)
       })
 
       socket.on('patient_updated', (data) => {
-        console.log('Patient updated:', data)
         debouncedRefetch('patient_updated', data)
       })
 
       // Listen for payment events
       socket.on('payment_processed', (data) => {
-        console.log('Payment processed:', data)
         debouncedRefetch('payment_processed', data)
       })
 
@@ -131,11 +121,9 @@ const ReceptionDashboard = () => {
   // Join clinic room when clinic is selected
   useEffect(() => {
     if (socket && isConnected && selectedClinic) {
-      console.log('Joining clinic room:', selectedClinic)
       joinQueueRoom(selectedClinic)
       
       return () => {
-        console.log('Leaving clinic room:', selectedClinic)
         leaveQueueRoom(selectedClinic)
       }
     }
@@ -495,7 +483,6 @@ const ReceptionDashboard = () => {
         isOpen={showBookingModal}
         onClose={() => setShowBookingModal(false)}
         onSuccess={(data) => {
-          console.log('Appointment created:', data)
           setShowBookingModal(false)
         }}
       />

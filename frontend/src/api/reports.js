@@ -23,8 +23,8 @@ export const reportsApi = {
   exportReport: async (params = {}) => {
     const response = await api.get('/reports/export', { 
       params,
-      responseType: 'blob'
+      responseType: 'blob' // Important for file downloads
     })
-    return response.data
+    return response
   }
 }

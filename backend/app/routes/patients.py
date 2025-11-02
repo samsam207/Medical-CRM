@@ -1,12 +1,14 @@
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask import Blueprint, request, jsonify, send_file
+from flask_jwt_extended import jwt_required
 from app import db, cache
 from app.models.patient import Patient, Gender
 from app.models.appointment import Appointment
 from app.models.visit import Visit
 from app.utils.decorators import receptionist_required, validate_json, log_audit
 from app.utils.validators import validate_phone_number
-from datetime import datetime
+from datetime import datetime, timedelta
+import csv
+from io import StringIO, BytesIO
 
 patients_bp = Blueprint('patients', __name__)
 
@@ -16,24 +18,39 @@ def get_patients():
     """Search patients by phone or name"""
     phone = request.args.get('phone')
     name = request.args.get('name')
+    gender = request.args.get('gender')
+    clinic_id = request.args.get('clinic_id', type=int)
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
     
     # Create cache key
-    cache_key = f'patients_{phone}_{name}_{page}_{per_page}'
+    cache_key = f'patients_{phone}_{name}_{gender}_{clinic_id}_{page}_{per_page}'
     
     # Try to get from cache first
     cached_result = cache.get(cache_key)
     if cached_result:
         return jsonify(cached_result), 200
     
-    query = Patient.query
+    # Build base query
+    if clinic_id:
+        # Get patients who have visited this clinic
+        from app.models.visit import Visit
+        patient_ids = db.session.query(Visit.patient_id).filter_by(clinic_id=clinic_id).distinct()
+        query = Patient.query.filter(Patient.id.in_(patient_ids))
+    else:
+        query = Patient.query
     
     if phone:
         query = query.filter(Patient.phone.contains(phone))
     if name:
         # Use case-insensitive search
         query = query.filter(Patient.name.ilike(f'%{name}%'))
+    if gender and gender != 'all':
+        try:
+            gender_enum = Gender(gender.lower())
+            query = query.filter(Patient.gender == gender_enum)
+        except ValueError:
+            pass  # Invalid gender value, ignore
     
     # Order by name
     query = query.order_by(Patient.name)
@@ -205,3 +222,92 @@ def search_patients():
     return jsonify({
         'patients': [patient.to_dict() for patient in patients]
     }), 200
+
+@patients_bp.route('/export', methods=['GET'])
+@jwt_required()
+def export_patients():
+    """Export patients to CSV"""
+    try:
+        # Get all patients (can add filters later)
+        patients = Patient.query.order_by(Patient.name).all()
+        
+        # Create CSV in memory
+        output = StringIO()
+        writer = csv.writer(output)
+        
+        # Write headers
+        writer.writerow([
+            'ID', 'Name', 'Phone', 'Age', 'Gender', 'Address', 'Medical History', 'Created At'
+        ])
+        
+        # Write data
+        for patient in patients:
+            writer.writerow([
+                patient.id,
+                patient.name,
+                patient.phone,
+                patient.age,
+                patient.gender.value if patient.gender else '',
+                patient.address or '',
+                patient.medical_history or '',
+                patient.created_at.strftime('%Y-%m-%d %H:%M:%S') if patient.created_at else ''
+            ])
+        
+        # Create response
+        output.seek(0)
+        
+        # Create a BytesIO for the response
+        from io import BytesIO
+        csv_bytes = BytesIO()
+        csv_bytes.write(output.getvalue().encode('utf-8-sig'))  # UTF-8 with BOM for Excel compatibility
+        csv_bytes.seek(0)
+        
+        return send_file(
+            csv_bytes,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=f'patients_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.csv'
+        )
+    except Exception as e:
+        return jsonify({'message': f'Error exporting patients: {str(e)}'}), 500
+
+@patients_bp.route('/statistics', methods=['GET'])
+@jwt_required()
+def get_patient_statistics():
+    """Get patient statistics"""
+    try:
+        from app.models.visit import Visit
+        clinic_id = request.args.get('clinic_id', type=int)
+        
+        # Build base query - filter by clinic if provided
+        if clinic_id:
+            # Get patients who have visited this clinic
+            patient_ids = db.session.query(Visit.patient_id).filter_by(clinic_id=clinic_id).distinct()
+            base_query = Patient.query.filter(Patient.id.in_(patient_ids))
+        else:
+            base_query = Patient.query
+        
+        total_patients = base_query.count()
+        
+        # Count by gender
+        male_count = base_query.filter_by(gender=Gender.MALE).count()
+        female_count = base_query.filter_by(gender=Gender.FEMALE).count()
+        other_count = base_query.filter_by(gender=Gender.OTHER).count()
+        
+        # Recent registrations (last 30 days)
+        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+        recent_count = base_query.filter(
+            Patient.created_at >= thirty_days_ago
+        ).count()
+        
+        return jsonify({
+            'total': total_patients,
+            'by_gender': {
+                'male': male_count,
+                'female': female_count,
+                'other': other_count
+            },
+                'recent': recent_count
+        }), 200
+    except Exception as e:
+        return jsonify({'message': f'Error retrieving statistics: {str(e)}'}), 500
