@@ -1,26 +1,29 @@
+/**
+ * Appointments Page - Redesigned with UI Kit
+ * 
+ * Modern appointments page using the unified design system.
+ * Preserves all API calls, data flow, and functionality.
+ */
+
 import React, { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { 
-  Calendar, 
-  Clock, 
-  User, 
-  Phone, 
-  Search, 
-  Filter, 
-  Plus, 
-  Eye, 
-  Edit, 
-  Trash2, 
-  Copy,
-  Download,
-  ChevronLeft,
-  ChevronRight,
-  FileSpreadsheet
+  Calendar, Clock, User, Phone, Search, Filter, Plus, Eye, Edit, Trash2, Copy,
+  Download, ChevronLeft, ChevronRight, X
 } from 'lucide-react'
-import { Button } from '../components/common/Button'
-import { Card } from '../components/common/Card'
-import { Modal } from '../components/common/Modal'
-import { Spinner } from '../components/common/Spinner'
+import { Button, Badge } from '../ui-kit'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui-kit'
+import { 
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '../ui-kit'
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '../ui-kit'
+import { Input, Label } from '../ui-kit'
+import { Skeleton } from '../ui-kit'
 import BookingWizard from '../components/BookingWizard'
 import { appointmentsApi, clinicsApi, doctorsApi } from '../api'
 import { formatDate, formatTime } from '../utils/formatters'
@@ -52,7 +55,7 @@ const AppointmentsPage = () => {
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
-  const perPage = 20 // Fixed value, no need for state
+  const perPage = 20
   
   // Modals
   const [selectedAppointment, setSelectedAppointment] = useState(null)
@@ -82,7 +85,6 @@ const AppointmentsPage = () => {
     per_page: perPage
   }
   
-  // Date handling
   if (useDateRange && startDate && endDate) {
     queryParams.start_date = startDate
     queryParams.end_date = endDate
@@ -94,10 +96,9 @@ const AppointmentsPage = () => {
   if (doctorFilter !== 'all') queryParams.doctor_id = parseInt(doctorFilter)
   if (statusFilter !== 'all') queryParams.status = statusFilter
 
-  // Add doctor/clinic filters automatically for doctors
   queryParams = addFilters(queryParams)
 
-  // Fetch appointments with pagination
+  // Fetch appointments
   const { data: appointmentsData, isLoading, error } = useQuery({
     queryKey: ['appointments', queryParams],
     queryFn: () => appointmentsApi.getAppointments(queryParams).then(res => ({
@@ -105,29 +106,28 @@ const AppointmentsPage = () => {
       total: res?.total || 0,
       pages: res?.pages || 1,
       current_page: res?.current_page || 1
-    }))
+    })),
+    staleTime: 2 * 60 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false
   })
   
   const appointments = appointmentsData?.appointments || []
   const totalPages = appointmentsData?.pages || 1
   const total = appointmentsData?.total || 0
 
-  // Fetch clinics for filter
-  // Use a unique query key to avoid cache conflicts with other components
+  // Fetch clinics
   const { data: clinicsData } = useQuery({
     queryKey: ['clinics', 'appointments-page'],
     queryFn: async () => {
       try {
         const res = await clinicsApi.getClinics()
-        // Backend returns { clinics: [...] }
         if (res && res.clinics && Array.isArray(res.clinics)) {
           return res.clinics
         }
-        // Handle edge case where response might be array directly
         if (Array.isArray(res)) {
           return res
         }
-        // Return empty array as fallback
         console.warn('Unexpected clinics API response format:', res)
         return []
       } catch (error) {
@@ -136,14 +136,13 @@ const AppointmentsPage = () => {
       }
     },
     retry: 2,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    cacheTime: 10 * 60 * 1000 // 10 minutes
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000
   })
   
-  // Ensure clinics is always an array with defensive check
   const clinics = Array.isArray(clinicsData) ? clinicsData : []
 
-  // Fetch doctors for filter (filtered by selected clinic)
+  // Fetch doctors
   const { data: doctorsData } = useQuery({
     queryKey: ['doctors', clinicFilter],
     queryFn: () => {
@@ -170,13 +169,13 @@ const AppointmentsPage = () => {
     },
     enabled: true,
     retry: 2,
-    staleTime: 5 * 60 * 1000 // 5 minutes
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000
   })
   
-  // Ensure doctors is always an array
   const doctors = Array.isArray(doctorsData) ? doctorsData : []
 
-  // Fetch services for selected clinic
+  // Fetch services
   const { data: servicesData } = useQuery({
     queryKey: ['clinic-services', clinicFilter],
     queryFn: () => {
@@ -202,12 +201,12 @@ const AppointmentsPage = () => {
     enabled: isRescheduleModalOpen && !!editForm.doctor_id
   })
 
-  // Update appointment mutation
+  // Mutations
   const updateAppointmentMutation = useMutationWithRefetch({
     mutationFn: ({ id, data }) => appointmentsApi.updateAppointment(id, data),
     queryKeys: [['appointments'], ['dashboard-stats'], ['queue-phases']],
-    onSuccessMessage: 'Appointment updated successfully',
-    onErrorMessage: 'Failed to update appointment',
+    onSuccessMessage: 'تم تحديث الموعد بنجاح',
+    onErrorMessage: 'فشل تحديث الموعد',
     onSuccessCallback: () => {
       setIsEditModalOpen(false)
       setIsRescheduleModalOpen(false)
@@ -223,24 +222,22 @@ const AppointmentsPage = () => {
     }
   })
 
-  // Duplicate appointment mutation
   const duplicateAppointmentMutation = useMutationWithRefetch({
     mutationFn: (data) => appointmentsApi.createAppointment(data),
     queryKeys: [['appointments'], ['dashboard-stats']],
-    onSuccessMessage: 'Appointment duplicated successfully',
-    onErrorMessage: 'Failed to duplicate appointment',
+    onSuccessMessage: 'تم نسخ الموعد بنجاح',
+    onErrorMessage: 'فشل نسخ الموعد',
     onSuccessCallback: () => {
       setIsDuplicateModalOpen(false)
       setSelectedAppointment(null)
     }
   })
 
-  // Delete appointment mutation
   const cancelAppointmentMutation = useMutationWithRefetch({
     mutationFn: ({ id, reason }) => appointmentsApi.cancelAppointment(id, { reason }),
     queryKeys: [['appointments'], ['dashboard-stats']],
-    onSuccessMessage: 'Appointment cancelled successfully',
-    onErrorMessage: 'Failed to cancel appointment',
+    onSuccessMessage: 'تم إلغاء الموعد بنجاح',
+    onErrorMessage: 'فشل إلغاء الموعد',
     onSuccessCallback: () => {
       setIsCancelModalOpen(false)
       setCancelReason('')
@@ -308,12 +305,10 @@ const AppointmentsPage = () => {
       notes: editForm.notes
     }
     
-    // Add reschedule data if time changed
     if (editForm.start_time && editForm.start_time !== selectedAppointment.start_time) {
       updateData.start_time = editForm.start_time
     }
     
-    // Add other fields if they changed
     if (editForm.service_id && editForm.service_id !== selectedAppointment.service_id) {
       updateData.service_id = editForm.service_id
     }
@@ -330,7 +325,7 @@ const AppointmentsPage = () => {
 
   const handleReschedule = () => {
     if (!selectedAppointment || !editForm.start_time) {
-      alert('Please select a new time slot')
+      alert('يرجى اختيار وقت جديد')
       return
     }
 
@@ -352,10 +347,9 @@ const AppointmentsPage = () => {
       patient_id: selectedAppointment.patient_id,
       service_id: selectedAppointment.service_id,
       booking_source: 'RECEPTION',
-      notes: `Duplicated from appointment #${selectedAppointment.booking_id}`
+      notes: `نسخ من الموعد #${selectedAppointment.booking_id}`
     }
     
-    // Schedule for next available slot - could be enhanced with better logic
     const nextSlot = availableSlots.find(slot => 
       new Date(slot.start_time) > new Date(selectedAppointment.start_time)
     )
@@ -363,7 +357,6 @@ const AppointmentsPage = () => {
     if (nextSlot) {
       duplicateData.start_time = nextSlot.start_time
     } else {
-      // Just add 1 day to original time
       const originalDate = new Date(selectedAppointment.start_time)
       originalDate.setDate(originalDate.getDate() + 1)
       duplicateData.start_time = originalDate.toISOString()
@@ -381,19 +374,16 @@ const AppointmentsPage = () => {
   }
 
   const handleExport = () => {
-    // Build export params
     const exportParams = { ...queryParams }
     delete exportParams.page
     delete exportParams.per_page
     
-    // Fetch all appointments for export
     appointmentsApi.getAppointments({
       ...exportParams,
-      per_page: 1000  // Export more records
+      per_page: 1000
     }).then(response => {
       const appointments = response?.appointments || []
       
-      // Convert to CSV
       const headers = ['Booking ID', 'Date', 'Time', 'Patient', 'Phone', 'Doctor', 'Clinic', 'Service', 'Status', 'Notes']
       const csvRows = [headers.join(',')]
       
@@ -425,20 +415,33 @@ const AppointmentsPage = () => {
       window.URL.revokeObjectURL(url)
     }).catch(error => {
       console.error('Export error:', error)
-      alert('Failed to export appointments')
+      alert('فشل تصدير المواعيد')
     })
   }
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'confirmed': return 'bg-blue-100 text-blue-800'
-      case 'checked_in': return 'bg-green-100 text-green-800'
-      case 'in_progress': return 'bg-yellow-100 text-yellow-800'
-      case 'completed': return 'bg-gray-100 text-gray-800'
-      case 'cancelled': return 'bg-red-100 text-red-800'
-      case 'no_show': return 'bg-orange-100 text-orange-800'
-      default: return 'bg-gray-100 text-gray-800'
+      case 'confirmed': return 'bg-blue-100 text-blue-800 border-blue-200'
+      case 'checked_in': return 'bg-green-100 text-green-800 border-green-200'
+      case 'in_progress': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+      case 'completed': return 'bg-gray-100 text-gray-800 border-gray-200'
+      case 'cancelled': return 'bg-red-100 text-red-800 border-red-200'
+      case 'no_show': return 'bg-orange-100 text-orange-800 border-orange-200'
+      default: return 'bg-gray-100 text-gray-800 border-gray-200'
     }
+  }
+
+  const getStatusBadge = (status) => {
+    const statusMap = {
+      'confirmed': { label: 'مؤكد', variant: 'default' },
+      'checked_in': { label: 'تم الحضور', variant: 'success' },
+      'in_progress': { label: 'قيد التنفيذ', variant: 'outline' },
+      'completed': { label: 'مكتمل', variant: 'secondary' },
+      'cancelled': { label: 'ملغي', variant: 'destructive' },
+      'no_show': { label: 'لم يحضر', variant: 'outline' }
+    }
+    const statusInfo = statusMap[status] || { label: status, variant: 'secondary' }
+    return <Badge variant={statusInfo.variant} className="font-arabic">{statusInfo.label}</Badge>
   }
 
   const resetFilters = () => {
@@ -454,295 +457,347 @@ const AppointmentsPage = () => {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <Spinner size="lg" />
-      </div>
+      <PageContainer>
+        <div className="flex justify-center items-center h-64">
+          <div className="space-y-4 w-full max-w-md">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-64 w-full" />
+          </div>
+        </div>
+      </PageContainer>
     )
   }
 
   if (error) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="text-center">
-          <h3 className="text-lg font-semibold text-red-600 mb-2">Error Loading Appointments</h3>
-          <p className="text-gray-600 mb-4">{error.message}</p>
-          <Button onClick={() => window.location.reload()}>Retry</Button>
+      <PageContainer>
+        <div className="flex justify-center items-center h-64">
+          <Card>
+            <CardContent className="p-8 text-center">
+              <h3 className="text-lg font-semibold text-red-600 mb-2 font-arabic">خطأ في تحميل المواعيد</h3>
+              <p className="text-gray-600 mb-4 font-arabic">{error.message}</p>
+              <Button onClick={() => window.location.reload()}>إعادة المحاولة</Button>
+            </CardContent>
+          </Card>
         </div>
-      </div>
+      </PageContainer>
     )
   }
 
   return (
-    <PageContainer className="space-y-8">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold">Appointments</h1>
-          <p className="text-sm text-gray-600 mt-1">
-            Showing {filteredAppointments.length} of {total} appointments
+    <PageContainer className="space-y-6" aria-label="صفحة المواعيد">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-gray-200">
+        <div className="space-y-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 font-arabic">
+            المواعيد
+          </h1>
+          <p className="text-sm text-gray-600 font-arabic">
+            عرض {filteredAppointments.length} من {total} موعد
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 w-full sm:w-auto">
           <Button
             variant="outline"
+            size="sm"
             onClick={handleExport}
             className="flex items-center gap-2"
+            aria-label="تصدير المواعيد"
           >
-            <Download className="w-4 h-4" />
-            Export CSV
+            <Download className="w-4 h-4" aria-hidden="true" />
+            <span className="hidden sm:inline">تصدير CSV</span>
           </Button>
           {!isDoctor && (
             <Button
               onClick={() => setIsBookingModalOpen(true)}
               className="flex items-center gap-2"
+              aria-label="إضافة موعد جديد"
             >
-              <Plus className="w-4 h-4" />
-              New Appointment
+              <Plus className="w-4 h-4" aria-hidden="true" />
+              <span>موعد جديد</span>
             </Button>
           )}
         </div>
       </div>
 
       {/* Filters */}
-      <Card className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Date Filter */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">Date Filter</label>
-            <div className="flex items-center gap-2 mb-2">
-              <Calendar className="w-4 h-4 text-gray-400" />
-              <select
-                value={useDateRange ? 'range' : 'today'}
-                onChange={(e) => {
-                  const isRange = e.target.value === 'range'
-                  setUseDateRange(isRange)
-                  if (!isRange) {
-                    setStartDate('')
-                    setEndDate('')
-                    setSelectedDate(new Date())
-                  }
-                }}
-                className="border rounded px-3 py-1 text-sm flex-1"
-              >
-                <option value="today">Single Date</option>
-                <option value="range">Date Range</option>
-              </select>
+      <Card>
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Date Filter */}
+            <div className="space-y-2">
+              <Label htmlFor="date-filter-type" className="font-arabic">نوع التاريخ</Label>
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-gray-400" aria-hidden="true" />
+                <select
+                  id="date-filter-type"
+                  value={useDateRange ? 'range' : 'today'}
+                  onChange={(e) => {
+                    const isRange = e.target.value === 'range'
+                    setUseDateRange(isRange)
+                    if (!isRange) {
+                      setStartDate('')
+                      setEndDate('')
+                      setSelectedDate(new Date())
+                    }
+                  }}
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic"
+                  aria-label="نوع فلترة التاريخ"
+                >
+                  <option value="today">تاريخ واحد</option>
+                  <option value="range">نطاق تاريخ</option>
+                </select>
+              </div>
+              {!useDateRange ? (
+                <Input
+                  type="date"
+                  value={selectedDate.toISOString().split('T')[0]}
+                  onChange={(e) => setSelectedDate(new Date(e.target.value))}
+                  className="text-sm font-arabic"
+                  aria-label="اختر التاريخ"
+                />
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="flex-1 text-sm font-arabic"
+                    placeholder="بداية"
+                    aria-label="تاريخ البداية"
+                  />
+                  <Input
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="flex-1 text-sm font-arabic"
+                    placeholder="نهاية"
+                    aria-label="تاريخ النهاية"
+                  />
+                </div>
+              )}
             </div>
-            {!useDateRange ? (
-              <input
-                type="date"
-                value={selectedDate.toISOString().split('T')[0]}
-                onChange={(e) => setSelectedDate(new Date(e.target.value))}
-                className="border rounded px-3 py-1 w-full text-sm"
-              />
-            ) : (
-              <div className="flex gap-2">
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="border rounded px-3 py-1 flex-1 text-sm"
-                  placeholder="Start"
-                />
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="border rounded px-3 py-1 flex-1 text-sm"
-                  placeholder="End"
-                />
+
+            {/* Clinic Filter */}
+            {!isDoctor && (
+              <div className="space-y-2">
+                <Label htmlFor="clinic-filter" className="font-arabic">العيادة</Label>
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-gray-400" aria-hidden="true" />
+                  <select
+                    id="clinic-filter"
+                    value={clinicFilter}
+                    onChange={(e) => {
+                      setClinicFilter(e.target.value)
+                      setDoctorFilter('all')
+                      setCurrentPage(1)
+                    }}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic"
+                    aria-label="فلترة حسب العيادة"
+                  >
+                    <option value="all">كل العيادات</option>
+                    {Array.isArray(clinics) && clinics.map(clinic => (
+                      <option key={clinic.id} value={clinic.id}>{clinic.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             )}
-          </div>
 
-          {/* Clinic Filter - Hidden for doctors */}
-          {!isDoctor && (
+            {/* Doctor Filter */}
+            {!isDoctor && (
+              <div className="space-y-2">
+                <Label htmlFor="doctor-filter" className="font-arabic">الطبيب</Label>
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4 text-gray-400" aria-hidden="true" />
+                  <select
+                    id="doctor-filter"
+                    value={doctorFilter}
+                    onChange={(e) => {
+                      setDoctorFilter(e.target.value)
+                      setCurrentPage(1)
+                    }}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic"
+                    aria-label="فلترة حسب الطبيب"
+                  >
+                    <option value="all">كل الأطباء</option>
+                    {Array.isArray(doctors) && doctors.map(doctor => (
+                      <option key={doctor.id} value={doctor.id}>{doctor.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Status Filter */}
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Clinic</label>
+              <Label htmlFor="status-filter" className="font-arabic">الحالة</Label>
               <div className="flex items-center gap-2">
-                <Filter className="w-4 h-4 text-gray-400" />
+                <Filter className="w-4 h-4 text-gray-400" aria-hidden="true" />
                 <select
-                  value={clinicFilter}
+                  id="status-filter"
+                  value={statusFilter}
                   onChange={(e) => {
-                    setClinicFilter(e.target.value)
-                    setDoctorFilter('all')
+                    setStatusFilter(e.target.value)
                     setCurrentPage(1)
                   }}
-                  className="border rounded px-3 py-1 w-full text-sm"
+                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic"
+                  aria-label="فلترة حسب الحالة"
                 >
-                  <option value="all">All Clinics</option>
-                  {Array.isArray(clinics) && clinics.map(clinic => (
-                    <option key={clinic.id} value={clinic.id}>{clinic.name}</option>
-                  ))}
+                  <option value="all">كل الحالات</option>
+                  <option value="confirmed">مؤكد</option>
+                  <option value="checked_in">تم الحضور</option>
+                  <option value="in_progress">قيد التنفيذ</option>
+                  <option value="completed">مكتمل</option>
+                  <option value="cancelled">ملغي</option>
+                  <option value="no_show">لم يحضر</option>
                 </select>
               </div>
             </div>
-          )}
 
-          {/* Doctor Filter - Hidden for doctors */}
-          {!isDoctor && (
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Doctor</label>
+            {/* Search */}
+            <div className="md:col-span-2 lg:col-span-4 space-y-2">
+              <Label htmlFor="search-appointments" className="font-arabic">البحث</Label>
               <div className="flex items-center gap-2">
-                <User className="w-4 h-4 text-gray-400" />
-                <select
-                  value={doctorFilter}
-                  onChange={(e) => {
-                    setDoctorFilter(e.target.value)
-                    setCurrentPage(1)
-                  }}
-                  className="border rounded px-3 py-1 w-full text-sm"
+                <div className="relative flex-1">
+                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" aria-hidden="true" />
+                  <Input
+                    id="search-appointments"
+                    type="text"
+                    placeholder="البحث بالاسم، الهاتف، الطبيب، أو العيادة..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pr-10 pl-4 font-arabic"
+                    aria-label="بحث المواعيد"
+                  />
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={resetFilters}
+                  aria-label="إعادة تعيين الفلاتر"
                 >
-                  <option value="all">All Doctors</option>
-                  {Array.isArray(doctors) && doctors.map(doctor => (
-                    <option key={doctor.id} value={doctor.id}>{doctor.name}</option>
-                  ))}
-                </select>
+                  إعادة تعيين
+                </Button>
               </div>
             </div>
-          )}
-
-          {/* Status Filter */}
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">Status</label>
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-gray-400" />
-              <select
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value)
-                  setCurrentPage(1)
-                }}
-                className="border rounded px-3 py-1 w-full text-sm"
-              >
-                <option value="all">All Status</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="checked_in">Checked In</option>
-                <option value="in_progress">In Progress</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-                <option value="no_show">No Show</option>
-              </select>
-            </div>
           </div>
-
-          {/* Search */}
-          <div className="space-y-2 md:col-span-2 lg:col-span-4">
-            <div className="flex items-center gap-2">
-              <Search className="w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by patient name, phone, doctor, or clinic..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="border rounded px-3 py-1 flex-1 text-sm"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={resetFilters}
-              >
-                Reset
-              </Button>
-            </div>
-          </div>
-        </div>
+        </CardContent>
       </Card>
 
-      {/* Appointments List */}
-      <div className="grid gap-4">
-        {filteredAppointments.length === 0 ? (
-          <Card className="p-8 text-center">
-            <Calendar className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-            <p className="text-gray-500">No appointments found for the selected filters</p>
-          </Card>
-        ) : (
-          filteredAppointments.map((appointment) => (
-            <Card key={appointment.id} className="p-4">
-              <div className="flex justify-between items-start">
-                <div className="flex-1">
-                  <div className="flex items-center gap-4 mb-2">
-                    <h3 className="font-semibold text-lg">{appointment.patient?.name}</h3>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(appointment.status)}`}>
-                      {appointment.status.replace('_', ' ').toUpperCase()}
-                    </span>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4" />
-                      <span>{formatTime(appointment.start_time)} - {formatTime(appointment.end_time)}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <User className="w-4 h-4" />
-                      <span>Dr. {appointment.doctor?.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-4 h-4" />
-                      <span>{appointment.patient?.phone}</span>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-2 text-sm text-gray-500">
-                    <span className="font-medium">Service:</span> {appointment.service?.name} • 
-                    <span className="font-medium ml-2">Clinic:</span> {appointment.clinic?.name}
-                  </div>
-                </div>
-                
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleViewAppointment(appointment)}
-                    title="View Details"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleRescheduleAppointment(appointment)}
-                    title="Reschedule"
-                  >
-                    <Calendar className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEditAppointment(appointment)}
-                    title="Edit"
-                  >
-                    <Edit className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDuplicateAppointment(appointment)}
-                    title="Duplicate"
-                  >
-                    <Copy className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleCancelAppointment(appointment)}
-                    className="text-red-600 hover:text-red-700"
-                    title="Cancel"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          ))
-        )}
-      </div>
+      {/* Appointments Table */}
+      {filteredAppointments.length === 0 ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <Calendar className="w-12 h-12 mx-auto text-gray-400 mb-4" aria-hidden="true" />
+            <p className="text-gray-600 font-medium font-arabic">لم يتم العثور على مواعيد للفلتر المحدد</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="font-arabic">التاريخ والوقت</TableHead>
+                    <TableHead className="font-arabic">المريض</TableHead>
+                    <TableHead className="font-arabic">الطبيب</TableHead>
+                    <TableHead className="font-arabic">العيادة</TableHead>
+                    <TableHead className="font-arabic">الحالة</TableHead>
+                    <TableHead className="font-arabic text-center">الإجراءات</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredAppointments.map((appointment) => (
+                    <TableRow key={appointment.id} className="hover:bg-gray-50">
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 font-arabic">
+                            <Calendar className="w-4 h-4 text-gray-400" aria-hidden="true" />
+                            <span className="font-medium">{formatDate(appointment.start_time)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-gray-600 font-arabic">
+                            <Clock className="w-3 h-3 text-gray-400" aria-hidden="true" />
+                            <span>{formatTime(appointment.start_time)} - {formatTime(appointment.end_time)}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="font-medium font-arabic">{appointment.patient?.name}</div>
+                          <div className="flex items-center gap-1 text-sm text-gray-600 font-arabic">
+                            <Phone className="w-3 h-3 text-gray-400" aria-hidden="true" />
+                            <span>{appointment.patient?.phone}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-arabic">{appointment.doctor?.name}</TableCell>
+                      <TableCell className="font-arabic">{appointment.clinic?.name}</TableCell>
+                      <TableCell>{getStatusBadge(appointment.status)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleViewAppointment(appointment)}
+                            className="h-8 w-8 p-0"
+                            aria-label={`عرض تفاصيل ${appointment.patient?.name}`}
+                          >
+                            <Eye className="w-4 h-4" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRescheduleAppointment(appointment)}
+                            className="h-8 w-8 p-0"
+                            aria-label={`إعادة جدولة ${appointment.patient?.name}`}
+                          >
+                            <Calendar className="w-4 h-4" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditAppointment(appointment)}
+                            className="h-8 w-8 p-0"
+                            aria-label={`تعديل ${appointment.patient?.name}`}
+                          >
+                            <Edit className="w-4 h-4" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDuplicateAppointment(appointment)}
+                            className="h-8 w-8 p-0"
+                            aria-label={`نسخ ${appointment.patient?.name}`}
+                          >
+                            <Copy className="w-4 h-4" aria-hidden="true" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleCancelAppointment(appointment)}
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            aria-label={`إلغاء ${appointment.patient?.name}`}
+                          >
+                            <Trash2 className="w-4 h-4" aria-hidden="true" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-600">
-            Showing {((currentPage - 1) * perPage) + 1} to {Math.min(currentPage * perPage, total)} of {total} appointments
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="text-sm text-gray-600 font-arabic">
+            عرض {((currentPage - 1) * perPage) + 1} إلى {Math.min(currentPage * perPage, total)} من {total} موعد
           </div>
           <div className="flex gap-2">
             <Button
@@ -750,9 +805,10 @@ const AppointmentsPage = () => {
               size="sm"
               onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
               disabled={currentPage === 1}
+              aria-label="الصفحة السابقة"
             >
-              <ChevronLeft className="w-4 h-4" />
-              Previous
+              <ChevronRight className="w-4 h-4" aria-hidden="true" />
+              <span className="hidden sm:inline">السابق</span>
             </Button>
             <div className="flex gap-1">
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
@@ -772,6 +828,8 @@ const AppointmentsPage = () => {
                     variant={currentPage === pageNum ? "default" : "outline"}
                     size="sm"
                     onClick={() => setCurrentPage(pageNum)}
+                    aria-label={`الصفحة ${pageNum}`}
+                    aria-current={currentPage === pageNum ? 'page' : undefined}
                   >
                     {pageNum}
                   </Button>
@@ -783,347 +841,375 @@ const AppointmentsPage = () => {
               size="sm"
               onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
               disabled={currentPage === totalPages}
+              aria-label="الصفحة التالية"
             >
-              Next
-              <ChevronRight className="w-4 h-4" />
+              <span className="hidden sm:inline">التالي</span>
+              <ChevronLeft className="w-4 h-4" aria-hidden="true" />
             </Button>
           </div>
         </div>
       )}
 
-      {/* View Appointment Modal */}
-      <Modal
-        isOpen={isViewModalOpen}
-        onClose={() => setIsViewModalOpen(false)}
-        title="Appointment Details"
-      >
-        {selectedAppointment && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-gray-500">Booking ID</label>
-                <p className="text-lg font-semibold">#{selectedAppointment.booking_id}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Status</label>
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(selectedAppointment.status)}`}>
-                  {selectedAppointment.status.replace('_', ' ').toUpperCase()}
-                </span>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Patient</label>
-                <p className="text-lg">{selectedAppointment.patient?.name}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Phone</label>
-                <p>{selectedAppointment.patient?.phone}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Doctor</label>
-                <p>Dr. {selectedAppointment.doctor?.name}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Clinic</label>
-                <p>{selectedAppointment.clinic?.name}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Service</label>
-                <p>{selectedAppointment.service?.name}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Time</label>
-                <p>{formatTime(selectedAppointment.start_time)} - {formatTime(selectedAppointment.end_time)}</p>
-              </div>
-              <div className="col-span-2">
-                <label className="text-sm font-medium text-gray-500">Date</label>
-                <p>{formatDate(selectedAppointment.start_time)}</p>
-              </div>
-            </div>
-            
-            {selectedAppointment.notes && (
-              <div>
-                <label className="text-sm font-medium text-gray-500">Notes</label>
-                <p className="mt-1 p-3 bg-gray-50 rounded">{selectedAppointment.notes}</p>
-              </div>
-            )}
-            
-            {selectedAppointment.payment && (
-              <div className="border-t pt-4">
-                <h4 className="text-lg font-semibold mb-3">Payment Information</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium text-gray-500">Payment Status</label>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      selectedAppointment.payment.status === 'paid' ? 'bg-green-100 text-green-800' :
-                      selectedAppointment.payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
-                    }`}>
-                      {selectedAppointment.payment.status.toUpperCase()}
-                    </span>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-500">Total Amount</label>
-                    <p className="text-lg font-semibold">${selectedAppointment.payment.total_amount}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-500">Amount Paid</label>
-                    <p>${selectedAppointment.payment.amount_paid}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-500">Payment Method</label>
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      selectedAppointment.payment.payment_method === 'cash' ? 'bg-blue-100 text-blue-800' :
-                      selectedAppointment.payment.payment_method === 'card' ? 'bg-purple-100 text-purple-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      {selectedAppointment.payment.payment_method.toUpperCase()}
-                    </span>
-                  </div>
+      {/* View Appointment Dialog */}
+      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+        <DialogContent size="lg" className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-arabic">تفاصيل الموعد</DialogTitle>
+            <DialogDescription className="font-arabic">
+              معلومات شاملة عن الموعد
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedAppointment && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">رقم الموعد</Label>
+                  <p className="text-base font-semibold font-arabic">#{selectedAppointment.booking_id}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">الحالة</Label>
+                  {getStatusBadge(selectedAppointment.status)}
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">المريض</Label>
+                  <p className="text-base font-arabic">{selectedAppointment.patient?.name}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">رقم الهاتف</Label>
+                  <p className="text-base font-arabic">{selectedAppointment.patient?.phone}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">الطبيب</Label>
+                  <p className="text-base font-arabic">د. {selectedAppointment.doctor?.name}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">العيادة</Label>
+                  <p className="text-base font-arabic">{selectedAppointment.clinic?.name}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">الخدمة</Label>
+                  <p className="text-base font-arabic">{selectedAppointment.service?.name}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">الوقت</Label>
+                  <p className="text-base font-arabic">{formatTime(selectedAppointment.start_time)} - {formatTime(selectedAppointment.end_time)}</p>
+                </div>
+                <div className="sm:col-span-2">
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">التاريخ</Label>
+                  <p className="text-base font-arabic">{formatDate(selectedAppointment.start_time)}</p>
                 </div>
               </div>
-            )}
-          </div>
-        )}
-      </Modal>
-
-      {/* Edit Appointment Modal */}
-      <Modal
-        isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
-        title="Edit Appointment"
-      >
-        {selectedAppointment && (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-              <select
-                value={editForm.status}
-                onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                className="w-full border rounded px-3 py-2"
-              >
-                <option value="confirmed">Confirmed</option>
-                <option value="checked_in">Checked In</option>
-                <option value="in_progress">In Progress</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-                <option value="no_show">No Show</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-              <textarea
-                value={editForm.notes}
-                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                className="w-full border rounded px-3 py-2"
-                rows="3"
-              />
-            </div>
-            
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setIsEditModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSaveEdit}
-                disabled={updateAppointmentMutation.isPending}
-              >
-                {updateAppointmentMutation.isPending ? <Spinner size="sm" /> : 'Save Changes'}
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* Reschedule Modal */}
-      <Modal
-        isOpen={isRescheduleModalOpen}
-        onClose={() => setIsRescheduleModalOpen(false)}
-        title="Reschedule Appointment"
-      >
-        {selectedAppointment && (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              Select a new date and time for this appointment
-            </p>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Select Date</label>
-              <input
-                type="date"
-                value={selectedDate.toISOString().split('T')[0]}
-                onChange={(e) => setSelectedDate(new Date(e.target.value))}
-                min={new Date().toISOString().split('T')[0]}
-                className="w-full border rounded px-3 py-2"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Available Time Slots</label>
-              {availableSlots.length === 0 ? (
-                <p className="text-sm text-gray-500 py-4">No available slots for selected date</p>
-              ) : (
-                <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
-                  {availableSlots.map((slot, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setEditForm({ ...editForm, start_time: slot.start_time })}
-                      className={`p-2 border rounded text-sm ${
-                        editForm.start_time === slot.start_time
-                          ? 'bg-blue-500 text-white border-blue-500'
-                          : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      {formatTime(slot.start_time)}
-                    </button>
-                  ))}
+              
+              {selectedAppointment.notes && (
+                <div>
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">ملاحظات</Label>
+                  <p className="mt-1 p-3 bg-gray-50 rounded-lg text-sm font-arabic">{selectedAppointment.notes}</p>
+                </div>
+              )}
+              
+              {selectedAppointment.payment && (
+                <div className="border-t pt-4">
+                  <h4 className="text-lg font-semibold mb-3 font-arabic">معلومات الدفع</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm text-gray-500 font-arabic mb-1">حالة الدفع</Label>
+                      <Badge variant={selectedAppointment.payment.status === 'paid' ? 'success' : selectedAppointment.payment.status === 'pending' ? 'outline' : 'destructive'} className="font-arabic">
+                        {selectedAppointment.payment.status === 'paid' ? 'مدفوع' : selectedAppointment.payment.status === 'pending' ? 'معلق' : 'غير مدفوع'}
+                      </Badge>
+                    </div>
+                    <div>
+                      <Label className="text-sm text-gray-500 font-arabic mb-1">المبلغ الإجمالي</Label>
+                      <p className="text-base font-semibold font-arabic">{selectedAppointment.payment.total_amount} دينار</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm text-gray-500 font-arabic mb-1">المبلغ المدفوع</Label>
+                      <p className="text-base font-arabic">{selectedAppointment.payment.amount_paid} دينار</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm text-gray-500 font-arabic mb-1">طريقة الدفع</Label>
+                      <Badge variant="outline" className="font-arabic">
+                        {selectedAppointment.payment.payment_method === 'cash' ? 'نقدي' : selectedAppointment.payment.payment_method === 'card' ? 'بطاقة' : 'أخرى'}
+                      </Badge>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsViewModalOpen(false)}>
+              إغلاق
+            </Button>
+            <Button onClick={() => {
+              setIsViewModalOpen(false)
+              handleEditAppointment(selectedAppointment)
+            }}>
+              تعديل
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-              <textarea
-                value={editForm.notes}
-                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                className="w-full border rounded px-3 py-2"
-                rows="2"
-                placeholder="Add a note about the reschedule reason..."
-              />
+      {/* Edit Appointment Dialog */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle className="font-arabic">تعديل الموعد</DialogTitle>
+            <DialogDescription className="font-arabic">
+              قم بتعديل معلومات الموعد
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedAppointment && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-status" className="font-arabic">الحالة *</Label>
+                <select
+                  id="edit-status"
+                  value={editForm.status}
+                  onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                  className="w-full h-12 border-2 border-gray-200 rounded-lg px-4 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic"
+                >
+                  <option value="confirmed">مؤكد</option>
+                  <option value="checked_in">تم الحضور</option>
+                  <option value="in_progress">قيد التنفيذ</option>
+                  <option value="completed">مكتمل</option>
+                  <option value="cancelled">ملغي</option>
+                  <option value="no_show">لم يحضر</option>
+                </select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="edit-notes" className="font-arabic">ملاحظات</Label>
+                <textarea
+                  id="edit-notes"
+                  value={editForm.notes}
+                  onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic min-h-[100px]"
+                  rows="3"
+                />
+              </div>
             </div>
-            
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setIsRescheduleModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleReschedule}
-                disabled={updateAppointmentMutation.isPending || !editForm.start_time}
-              >
-                {updateAppointmentMutation.isPending ? <Spinner size="sm" /> : 'Reschedule'}
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
+          )}
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsEditModalOpen(false)}
+            >
+              إلغاء
+            </Button>
+            <Button
+              onClick={handleSaveEdit}
+              disabled={updateAppointmentMutation.isPending}
+              loading={updateAppointmentMutation.isPending}
+            >
+              حفظ التغييرات
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* Duplicate Modal */}
-      <Modal
-        isOpen={isDuplicateModalOpen}
-        onClose={() => setIsDuplicateModalOpen(false)}
-        title="Duplicate Appointment"
-      >
-        {selectedAppointment && (
-          <div className="space-y-4">
-            <div className="bg-blue-50 border border-blue-200 rounded p-4">
-              <p className="text-sm text-blue-800">
-                This will create a new appointment with the same patient, doctor, and service.
-                Please review and confirm.
-              </p>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-gray-500">Patient</label>
-                <p>{selectedAppointment.patient?.name}</p>
+      {/* Reschedule Dialog */}
+      <Dialog open={isRescheduleModalOpen} onOpenChange={setIsRescheduleModalOpen}>
+        <DialogContent size="md">
+          <DialogHeader>
+            <DialogTitle className="font-arabic">إعادة جدولة الموعد</DialogTitle>
+            <DialogDescription className="font-arabic">
+              اختر تاريخ ووقت جديد للموعد
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedAppointment && (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reschedule-date" className="font-arabic">اختر التاريخ</Label>
+                <Input
+                  id="reschedule-date"
+                  type="date"
+                  value={selectedDate.toISOString().split('T')[0]}
+                  onChange={(e) => setSelectedDate(new Date(e.target.value))}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="font-arabic"
+                />
               </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Doctor</label>
-                <p>Dr. {selectedAppointment.doctor?.name}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Service</label>
-                <p>{selectedAppointment.service?.name}</p>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Clinic</label>
-                <p>{selectedAppointment.clinic?.name}</p>
-              </div>
-            </div>
-            
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setIsDuplicateModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleDuplicate}
-                disabled={duplicateAppointmentMutation.isPending}
-              >
-                {duplicateAppointmentMutation.isPending ? <Spinner size="sm" /> : 'Duplicate Appointment'}
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
 
-      {/* Cancel Modal */}
-      <Modal
-        isOpen={isCancelModalOpen}
-        onClose={() => setIsCancelModalOpen(false)}
-        title="Cancel Appointment"
-      >
-        {selectedAppointment && (
-          <div className="space-y-4">
-            <div className="bg-red-50 border border-red-200 rounded p-4">
-              <p className="text-sm text-red-800 font-medium">
-                Are you sure you want to cancel this appointment?
-              </p>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-gray-500">Patient</label>
-                <p>{selectedAppointment.patient?.name}</p>
+              <div className="space-y-2">
+                <Label className="font-arabic">الأوقات المتاحة</Label>
+                {availableSlots.length === 0 ? (
+                  <p className="text-sm text-gray-500 py-4 font-arabic">لا توجد أوقات متاحة للتاريخ المحدد</p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 border border-gray-200 rounded-lg">
+                    {availableSlots.map((slot, idx) => (
+                      <Button
+                        key={idx}
+                        type="button"
+                        variant={editForm.start_time === slot.start_time ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setEditForm({ ...editForm, start_time: slot.start_time })}
+                        className="font-arabic"
+                      >
+                        {formatTime(slot.start_time)}
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div>
-                <label className="text-sm font-medium text-gray-500">Date & Time</label>
-                <p>{formatDate(selectedAppointment.start_time)} at {formatTime(selectedAppointment.start_time)}</p>
+
+              <div className="space-y-2">
+                <Label htmlFor="reschedule-notes" className="font-arabic">ملاحظات</Label>
+                <textarea
+                  id="reschedule-notes"
+                  value={editForm.notes}
+                  onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic min-h-[80px]"
+                  rows="2"
+                  placeholder="أضف ملاحظة حول سبب إعادة الجدولة..."
+                />
               </div>
             </div>
+          )}
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsRescheduleModalOpen(false)}
+            >
+              إلغاء
+            </Button>
+            <Button
+              onClick={handleReschedule}
+              disabled={updateAppointmentMutation.isPending || !editForm.start_time}
+              loading={updateAppointmentMutation.isPending}
+            >
+              إعادة الجدولة
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Cancellation Reason (Optional)
-              </label>
-              <textarea
-                value={cancelReason}
-                onChange={(e) => setCancelReason(e.target.value)}
-                className="w-full border rounded px-3 py-2"
-                rows="3"
-                placeholder="Enter reason for cancellation..."
-              />
+      {/* Duplicate Dialog */}
+      <Dialog open={isDuplicateModalOpen} onOpenChange={setIsDuplicateModalOpen}>
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle className="font-arabic">نسخ الموعد</DialogTitle>
+            <DialogDescription className="font-arabic">
+              سيتم إنشاء موعد جديد بنفس بيانات هذا الموعد
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedAppointment && (
+            <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-800 font-arabic">
+                  سيتم إنشاء موعد جديد بنفس المريض والطبيب والخدمة. يرجى المراجعة والتأكيد.
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">المريض</Label>
+                  <p className="text-base font-arabic">{selectedAppointment.patient?.name}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">الطبيب</Label>
+                  <p className="text-base font-arabic">د. {selectedAppointment.doctor?.name}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">الخدمة</Label>
+                  <p className="text-base font-arabic">{selectedAppointment.service?.name}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">العيادة</Label>
+                  <p className="text-base font-arabic">{selectedAppointment.clinic?.name}</p>
+                </div>
+              </div>
             </div>
-            
-            <div className="flex justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setIsCancelModalOpen(false)}
-              >
-                Keep Appointment
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={handleCancelConfirm}
-                disabled={cancelAppointmentMutation.isPending}
-              >
-                {cancelAppointmentMutation.isPending ? <Spinner size="sm" /> : 'Cancel Appointment'}
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
+          )}
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDuplicateModalOpen(false)}
+            >
+              إلغاء
+            </Button>
+            <Button
+              onClick={handleDuplicate}
+              disabled={duplicateAppointmentMutation.isPending}
+              loading={duplicateAppointmentMutation.isPending}
+            >
+              نسخ الموعد
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* Booking Wizard Modal */}
+      {/* Cancel Dialog */}
+      <Dialog open={isCancelModalOpen} onOpenChange={setIsCancelModalOpen}>
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle className="font-arabic text-red-600">إلغاء الموعد</DialogTitle>
+            <DialogDescription className="font-arabic">
+              هل أنت متأكد من رغبتك في إلغاء هذا الموعد؟
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedAppointment && (
+            <div className="space-y-4">
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-sm text-red-800 font-medium font-arabic">
+                  هل أنت متأكد من رغبتك في إلغاء هذا الموعد؟
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">المريض</Label>
+                  <p className="text-base font-arabic">{selectedAppointment.patient?.name}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-gray-500 font-arabic mb-1">التاريخ والوقت</Label>
+                  <p className="text-base font-arabic">{formatDate(selectedAppointment.start_time)} في {formatTime(selectedAppointment.start_time)}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="cancel-reason" className="font-arabic">سبب الإلغاء (اختياري)</Label>
+                <textarea
+                  id="cancel-reason"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic min-h-[80px]"
+                  rows="3"
+                  placeholder="أدخل سبب الإلغاء..."
+                />
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsCancelModalOpen(false)}
+            >
+              الاحتفاظ بالموعد
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCancelConfirm}
+              disabled={cancelAppointmentMutation.isPending}
+              loading={cancelAppointmentMutation.isPending}
+            >
+              إلغاء الموعد
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Booking Wizard */}
       <BookingWizard
         isOpen={isBookingModalOpen}
         onClose={() => setIsBookingModalOpen(false)}
@@ -1132,43 +1218,8 @@ const AppointmentsPage = () => {
           setIsBookingModalOpen(false)
         }}
       />
-
-      {/* Toast Notifications */}
-      {(updateAppointmentMutation.toast.show || cancelAppointmentMutation.toast.show || duplicateAppointmentMutation.toast.show) && (
-        <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg flex items-center gap-3 ${
-          (updateAppointmentMutation.toast.show ? updateAppointmentMutation.toast.type : 
-           cancelAppointmentMutation.toast.show ? cancelAppointmentMutation.toast.type :
-           duplicateAppointmentMutation.toast.type) === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
-        }`}>
-          <div className={`w-5 h-5 flex items-center justify-center rounded-full ${
-            (updateAppointmentMutation.toast.show ? updateAppointmentMutation.toast.type : 
-             cancelAppointmentMutation.toast.show ? cancelAppointmentMutation.toast.type :
-             duplicateAppointmentMutation.toast.type) === 'success' ? 'bg-green-600' : 'bg-red-600'
-          }`}>
-            {(updateAppointmentMutation.toast.show ? updateAppointmentMutation.toast.type : 
-              cancelAppointmentMutation.toast.show ? cancelAppointmentMutation.toast.type :
-              duplicateAppointmentMutation.toast.type) === 'success' ? '✓' : '✕'}
-          </div>
-          <span className="font-medium">
-            {updateAppointmentMutation.toast.show ? updateAppointmentMutation.toast.message : 
-             cancelAppointmentMutation.toast.show ? cancelAppointmentMutation.toast.message :
-             duplicateAppointmentMutation.toast.message}
-          </span>
-          <button 
-            onClick={() => {
-              if (updateAppointmentMutation.toast.show) updateAppointmentMutation.dismissToast()
-              if (cancelAppointmentMutation.toast.show) cancelAppointmentMutation.dismissToast()
-              if (duplicateAppointmentMutation.toast.show) duplicateAppointmentMutation.dismissToast()
-            }}
-            className="ml-2 text-white hover:text-gray-200"
-          >
-            ✕
-          </button>
-        </div>
-      )}
     </PageContainer>
   )
 }
 
 export default AppointmentsPage
-
