@@ -40,14 +40,14 @@ const StatCard = ({
   if (loading) {
     return (
       <Card>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between">
-            <div className="space-y-2 flex-1">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-8 w-32" />
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-2 flex-1 min-w-0">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-7 w-24" />
               <Skeleton className="h-3 w-16" />
             </div>
-            <Skeleton className="h-12 w-12 rounded-3xl" />
+            <Skeleton className="h-12 w-12 rounded-2xl flex-shrink-0" />
           </div>
         </CardContent>
       </Card>
@@ -56,52 +56,49 @@ const StatCard = ({
 
   return (
     <Card className={cn(
-      'hover:shadow-premium-lg transition-all duration-300 hover:scale-[1.03] hover:-translate-y-1',
-      'bg-gradient-to-br from-white via-white to-gray-50/40',
-      'backdrop-blur-md shadow-premium group',
+      'hover:shadow-premium-lg transition-all duration-300',
+      'bg-white shadow-md border border-gray-200',
       borderColors[iconColor],
-      'cursor-pointer'
+      'group'
     )} role="region" aria-label={`${title}: ${value}`}>
-      <CardContent className="p-7">
-        <div className="flex items-start justify-between pb-5">
+      <CardContent className="p-5">
+        <div className="flex items-start justify-between gap-4 mb-3">
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-bold text-gray-600 mb-4 tracking-wider uppercase font-arabic">{title}</p>
-            <p className="text-5xl font-extrabold text-gray-900 animate-counter bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 bg-clip-text text-transparent leading-tight font-arabic">
+            <p className="text-xs font-semibold text-gray-600 mb-2 leading-tight font-arabic line-clamp-2">{title}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight font-arabic truncate">
               {value}
             </p>
           </div>
           {Icon && (
             <div className={cn(
-              'h-16 w-16 rounded-3xl flex items-center justify-center',
-              'shadow-premium-lg group-hover:shadow-glow-blue',
-              'transform group-hover:scale-110 group-hover:rotate-3 transition-all duration-300',
-              iconColors[iconColor],
-              'flex-shrink-0'
+              'h-12 w-12 rounded-2xl flex items-center justify-center flex-shrink-0',
+              'shadow-md',
+              iconColors[iconColor]
             )} aria-hidden="true">
-              <Icon className="h-8 w-8" />
+              <Icon className="h-5 w-5" />
             </div>
           )}
         </div>
-        <div className="space-y-2 pt-4 border-t-2 border-gray-100/80">
-          {subtitle && (
-            <p className="text-xs font-semibold text-gray-600 tracking-wide font-arabic">{subtitle}</p>
-          )}
-          {trend && trendValue && (
-            <div className="flex items-center gap-2 mt-3">
-              {trend === 'up' ? (
-                <TrendingUp className="h-5 w-5 text-medical-green-600" aria-hidden="true" />
-              ) : (
-                <TrendingDown className="h-5 w-5 text-red-600" aria-hidden="true" />
-              )}
-              <span className={cn(
-                'text-sm font-bold font-arabic',
-                trend === 'up' ? 'text-medical-green-600' : 'text-red-600'
-              )}>
-                {trendValue}
-              </span>
-            </div>
-          )}
-        </div>
+        {subtitle && (
+          <div className="pt-3 border-t border-gray-100">
+            <p className="text-xs text-gray-500 font-medium font-arabic">{subtitle}</p>
+          </div>
+        )}
+        {trend && trendValue && (
+          <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100">
+            {trend === 'up' ? (
+              <TrendingUp className="h-4 w-4 text-medical-green-600 flex-shrink-0" aria-hidden="true" />
+            ) : (
+              <TrendingDown className="h-4 w-4 text-red-600 flex-shrink-0" aria-hidden="true" />
+            )}
+            <span className={cn(
+              'text-xs font-semibold font-arabic',
+              trend === 'up' ? 'text-medical-green-600' : 'text-red-600'
+            )}>
+              {trendValue}
+            </span>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
