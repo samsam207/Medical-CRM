@@ -1,35 +1,79 @@
+import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import Login from './pages/Login'
-import DashboardPage from './pages/DashboardPage'
-import DoctorDashboard from './pages/DoctorDashboard'
-import PatientsListPage from './pages/PatientsListPage'
-import AppointmentsPage from './pages/AppointmentsPage'
-import PaymentsPage from './pages/PaymentsPage'
-import ReportsPage from './pages/ReportsPage'
-import QueueManagementPage from './pages/QueueManagementPage'
-import ClinicsAndDoctorsPage from './pages/ClinicsAndDoctorsPage'
-import CurrentAppointmentPage from './pages/CurrentAppointmentPage'
+import { lazy, Suspense } from 'react'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import ErrorBoundary from './components/common/ErrorBoundary'
+import SentryErrorBoundary from './components/common/SentryErrorBoundary'
 import AppShell from './components/layout/AppShell'
 import { LayoutProvider } from './contexts/LayoutContext'
+import Spinner from './components/common/Spinner'
+import { initSentry } from './utils/sentry'
+
+// Lazy load pages for code splitting
+const Login = lazy(() => import('./pages/Login'))
+const Register = lazy(() => import('./pages/Register'))
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const DoctorDashboard = lazy(() => import('./pages/DoctorDashboard'))
+const PatientsListPage = lazy(() => import('./pages/PatientsListPage'))
+const AppointmentsPage = lazy(() => import('./pages/AppointmentsPage'))
+const PaymentsPage = lazy(() => import('./pages/PaymentsPage'))
+const ReportsPage = lazy(() => import('./pages/ReportsPage'))
+const QueueManagementPage = lazy(() => import('./pages/QueueManagementPage'))
+const ClinicsAndDoctorsPage = lazy(() => import('./pages/ClinicsAndDoctorsPage'))
+const CurrentAppointmentPage = lazy(() => import('./pages/CurrentAppointmentPage'))
+
+// Loading fallback component
+const PageLoader = () => (
+  <div className="min-h-screen flex items-center justify-center">
+    <Spinner size="lg" />
+  </div>
+)
 
 function App() {
+  // Initialize Sentry on app mount
+  React.useEffect(() => {
+    initSentry();
+  }, []);
+  
   return (
-    <ErrorBoundary>
+    <SentryErrorBoundary>
+      <ErrorBoundary>
       <LayoutProvider>
         <div className="min-h-screen bg-gray-50 font-arabic" dir="rtl">
           <Routes>
             <Route 
               path="/login" 
-              element={<Login />}
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Login />
+                </Suspense>
+              }
+            />
+            <Route 
+              path="/register" 
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <Register />
+                </Suspense>
+              }
+            />
+            <Route 
+              path="/forgot-password" 
+              element={
+                <Suspense fallback={<PageLoader />}>
+                  <ForgotPassword />
+                </Suspense>
+              }
             />
             <Route 
               path="/reception/dashboard" 
               element={
                 <ProtectedRoute allowedRoles={['receptionist', 'admin', 'doctor']}>
                   <AppShell>
-                    <DashboardPage />
+                    <Suspense fallback={<PageLoader />}>
+                      <DashboardPage />
+                    </Suspense>
                   </AppShell>
                 </ProtectedRoute>
               } 
@@ -42,7 +86,9 @@ function App() {
               path="/doctor" 
               element={
                 <ProtectedRoute allowedRoles={['doctor', 'admin']}>
-                  <DoctorDashboard />
+                  <Suspense fallback={<PageLoader />}>
+                    <DoctorDashboard />
+                  </Suspense>
                 </ProtectedRoute>
               } 
             />
@@ -51,7 +97,9 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['receptionist', 'admin', 'doctor']}>
                   <AppShell>
-                    <PatientsListPage />
+                    <Suspense fallback={<PageLoader />}>
+                      <PatientsListPage />
+                    </Suspense>
                   </AppShell>
                 </ProtectedRoute>
               } 
@@ -61,7 +109,9 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['receptionist', 'admin', 'doctor']}>
                   <AppShell>
-                    <AppointmentsPage />
+                    <Suspense fallback={<PageLoader />}>
+                      <AppointmentsPage />
+                    </Suspense>
                   </AppShell>
                 </ProtectedRoute>
               } 
@@ -71,7 +121,9 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['receptionist', 'admin', 'doctor']}>
                   <AppShell>
-                    <PaymentsPage />
+                    <Suspense fallback={<PageLoader />}>
+                      <PaymentsPage />
+                    </Suspense>
                   </AppShell>
                 </ProtectedRoute>
               } 
@@ -81,7 +133,9 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['receptionist', 'admin', 'doctor']}>
                   <AppShell>
-                    <ReportsPage />
+                    <Suspense fallback={<PageLoader />}>
+                      <ReportsPage />
+                    </Suspense>
                   </AppShell>
                 </ProtectedRoute>
               } 
@@ -91,7 +145,9 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['receptionist', 'admin', 'doctor']}>
                   <AppShell>
-                    <ClinicsAndDoctorsPage />
+                    <Suspense fallback={<PageLoader />}>
+                      <ClinicsAndDoctorsPage />
+                    </Suspense>
                   </AppShell>
                 </ProtectedRoute>
               } 
@@ -101,7 +157,9 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['receptionist', 'admin', 'doctor']}>
                   <AppShell>
-                    <QueueManagementPage />
+                    <Suspense fallback={<PageLoader />}>
+                      <QueueManagementPage />
+                    </Suspense>
                   </AppShell>
                 </ProtectedRoute>
               } 
@@ -111,7 +169,9 @@ function App() {
               element={
                 <ProtectedRoute allowedRoles={['doctor', 'admin']}>
                   <AppShell>
-                    <CurrentAppointmentPage />
+                    <Suspense fallback={<PageLoader />}>
+                      <CurrentAppointmentPage />
+                    </Suspense>
                   </AppShell>
                 </ProtectedRoute>
               } 
@@ -121,7 +181,8 @@ function App() {
           </Routes>
         </div>
       </LayoutProvider>
-    </ErrorBoundary>
+      </ErrorBoundary>
+    </SentryErrorBoundary>
   )
 }
 
