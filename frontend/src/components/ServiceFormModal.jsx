@@ -1,6 +1,21 @@
+/**
+ * Service Form Modal - Redesigned with UI Kit
+ * 
+ * Modern service form using Dialog component.
+ * Preserves all validation and API calls.
+ */
+
 import React, { useState, useEffect } from 'react'
-import Modal from './common/Modal'
-import Button from './common/Button'
+import { 
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '../ui-kit'
+import { Button } from '../ui-kit'
+import { Input, Label } from '../ui-kit'
 import { DollarSign } from 'lucide-react'
 
 const ServiceFormModal = ({ isOpen, onClose, onSave, service = null, clinicId = null }) => {
@@ -43,15 +58,15 @@ const ServiceFormModal = ({ isOpen, onClose, onSave, service = null, clinicId = 
     const newErrors = {}
     
     if (!formData.name.trim()) {
-      newErrors.name = 'Service name is required'
+      newErrors.name = 'اسم الخدمة مطلوب'
     }
     
     if (!formData.duration || parseInt(formData.duration) <= 0) {
-      newErrors.duration = 'Duration must be greater than 0 (in minutes)'
+      newErrors.duration = 'يجب أن تكون المدة أكبر من 0 (بالدقائق)'
     }
     
     if (!formData.price || parseFloat(formData.price) <= 0) {
-      newErrors.price = 'Price must be greater than 0'
+      newErrors.price = 'يجب أن يكون السعر أكبر من 0'
     }
 
     setErrors(newErrors)
@@ -76,72 +91,74 @@ const ServiceFormModal = ({ isOpen, onClose, onSave, service = null, clinicId = 
   }
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={service ? 'Edit Service' : 'Add New Service'}
-      size="md"
-    >
-      <form onSubmit={handleSubmit} className="p-6">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Service Name *
-            </label>
-            <input
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle className="font-arabic flex items-center gap-2">
+            <DollarSign className="w-5 h-5" aria-hidden="true" />
+            {service ? 'تعديل الخدمة' : 'إضافة خدمة جديدة'}
+          </DialogTitle>
+          <DialogDescription className="font-arabic">
+            {service ? 'قم بتعديل بيانات الخدمة' : 'قم بإدخال بيانات الخدمة الجديدة'}
+          </DialogDescription>
+        </DialogHeader>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="service-name" className="font-arabic">اسم الخدمة *</Label>
+            <Input
+              id="service-name"
               type="text"
               name="name"
               value={formData.name}
               onChange={handleChange}
-              className={`w-full border rounded px-3 py-2 ${
-                errors.name ? 'border-red-500' : ''
-              }`}
-              placeholder="e.g., Consultation, Check-up"
+              placeholder="مثال: استشارة، فحص"
+              className={`font-arabic ${errors.name ? 'border-red-500' : ''}`}
+              aria-invalid={!!errors.name}
+              aria-describedby={errors.name ? 'service-name-error' : undefined}
             />
             {errors.name && (
-              <p className="text-red-500 text-sm mt-1">{errors.name}</p>
+              <p id="service-name-error" className="text-sm text-red-600 font-arabic">{errors.name}</p>
             )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Duration (minutes) *
-              </label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="service-duration" className="font-arabic">المدة (بالدقائق) *</Label>
+              <Input
+                id="service-duration"
                 type="number"
                 name="duration"
                 value={formData.duration}
                 onChange={handleChange}
                 min="1"
-                className={`w-full border rounded px-3 py-2 ${
-                  errors.duration ? 'border-red-500' : ''
-                }`}
                 placeholder="30"
+                className={`font-arabic ${errors.duration ? 'border-red-500' : ''}`}
+                aria-invalid={!!errors.duration}
+                aria-describedby={errors.duration ? 'service-duration-error' : undefined}
               />
               {errors.duration && (
-                <p className="text-red-500 text-sm mt-1">{errors.duration}</p>
+                <p id="service-duration-error" className="text-sm text-red-600 font-arabic">{errors.duration}</p>
               )}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Price ($) *
-              </label>
-              <input
+            <div className="space-y-2">
+              <Label htmlFor="service-price" className="font-arabic">السعر *</Label>
+              <Input
+                id="service-price"
                 type="number"
                 name="price"
                 value={formData.price}
                 onChange={handleChange}
                 min="0"
                 step="0.01"
-                className={`w-full border rounded px-3 py-2 ${
-                  errors.price ? 'border-red-500' : ''
-                }`}
                 placeholder="100.00"
+                className={`font-arabic ${errors.price ? 'border-red-500' : ''}`}
+                aria-invalid={!!errors.price}
+                aria-describedby={errors.price ? 'service-price-error' : undefined}
               />
               {errors.price && (
-                <p className="text-red-500 text-sm mt-1">{errors.price}</p>
+                <p id="service-price-error" className="text-sm text-red-600 font-arabic">{errors.price}</p>
               )}
             </div>
           </div>
@@ -152,31 +169,31 @@ const ServiceFormModal = ({ isOpen, onClose, onSave, service = null, clinicId = 
               name="is_active"
               checked={formData.is_active}
               onChange={handleChange}
-              id="is_active"
-              className="w-4 h-4"
+              id="service-active"
+              className="w-4 h-4 rounded border-gray-300 focus:ring-2 focus:ring-medical-blue-200 text-medical-blue-600"
+              aria-label="نشط"
             />
-            <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
-              Active
-            </label>
+            <Label htmlFor="service-active" className="font-arabic cursor-pointer">
+              نشط
+            </Label>
           </div>
-        </div>
 
-        <div className="flex justify-end gap-2 mt-6">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
-            {service ? 'Update' : 'Create'} Service
-          </Button>
-        </div>
-      </form>
-    </Modal>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+            >
+              إلغاء
+            </Button>
+            <Button type="submit">
+              {service ? 'تحديث' : 'إنشاء'} الخدمة
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
 export default ServiceFormModal
-
