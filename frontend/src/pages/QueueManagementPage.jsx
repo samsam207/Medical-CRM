@@ -1,16 +1,25 @@
+/**
+ * Queue Management Page - Redesigned with UI Kit
+ * 
+ * Modern queue management page wrapper.
+ * Preserves all API calls and functionality.
+ */
+
 import { useState, useEffect } from 'react'
 import QueueManagement from '../components/QueueManagement'
 import { useQuery } from '@tanstack/react-query'
 import { clinicsApi } from '../api/clinics'
 import { useDoctorFilters } from '../hooks/useDoctorFilters'
 import PageContainer from '../components/layout/PageContainer'
+import { Card, CardContent } from '../ui-kit'
+import { Skeleton } from '../ui-kit'
 
 const QueueManagementPage = () => {
   const { clinicId, isDoctor } = useDoctorFilters()
   const [selectedClinic, setSelectedClinic] = useState(null)
 
   // Fetch clinics
-  const { data: clinics = [] } = useQuery({
+  const { data: clinics = [], isLoading: loadingClinics } = useQuery({
     queryKey: ['clinics'],
     queryFn: async () => {
       const result = await clinicsApi.getClinics()
@@ -27,6 +36,19 @@ const QueueManagementPage = () => {
     }
   }, [clinics, selectedClinic, isDoctor, clinicId])
 
+  if (loadingClinics) {
+    return (
+      <PageContainer>
+        <div className="flex items-center justify-center h-64">
+          <div className="space-y-4 w-full max-w-md">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-64 w-full" />
+          </div>
+        </div>
+      </PageContainer>
+    )
+  }
+
   return (
     <PageContainer>
       {selectedClinic ? (
@@ -35,13 +57,14 @@ const QueueManagementPage = () => {
           onQueueUpdate={() => {}} 
         />
       ) : (
-        <div className="text-center py-12">
-          <p className="text-gray-500">جاري تحميل العيادات...</p>
-        </div>
+        <Card>
+          <CardContent className="p-12 text-center">
+            <p className="text-gray-600 font-medium font-arabic">جاري تحميل العيادات...</p>
+          </CardContent>
+        </Card>
       )}
     </PageContainer>
   )
 }
 
 export default QueueManagementPage
-
