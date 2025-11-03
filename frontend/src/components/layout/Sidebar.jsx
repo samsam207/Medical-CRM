@@ -60,25 +60,25 @@ const Sidebar = ({ onCollapseChange }) => {
       <div className="absolute inset-0 opacity-10" style={{
         background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,.05) 2px, rgba(255,255,255,.05) 4px)'
       }} />
-      {/* Logo/Brand */}
-      <div className="relative flex h-16 items-center justify-between border-b border-white/20 px-4 z-10">
-        {!collapsed && (
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/90 shadow-sm backdrop-blur-sm">
-              <Building2 className="h-6 w-6 text-medical-blue-600" />
+        {/* Logo/Brand - Premium Design */}
+        <div className="relative flex h-20 items-center justify-between border-b border-white/30 px-4 z-10 backdrop-blur-sm">
+          {!collapsed && (
+            <div className="flex items-center gap-3.5">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/95 shadow-premium backdrop-blur-md transition-all duration-300 hover:scale-110">
+                <Building2 className="h-7 w-7 text-medical-blue-600" />
+              </div>
+              <div className="flex flex-col">
+                <span className="font-bold text-base text-white drop-shadow-md leading-tight">نظام إدارة العيادة</span>
+                <span className="text-xs text-white/90 font-medium">Medical CRM</span>
+              </div>
             </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-sm text-white drop-shadow-sm">نظام إدارة العيادة</span>
-              <span className="text-xs text-white/80">Medical CRM</span>
+          )}
+          {collapsed && (
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/95 shadow-premium mx-auto backdrop-blur-md transition-all duration-300 hover:scale-110">
+              <Building2 className="h-7 w-7 text-medical-blue-600" />
             </div>
-          </div>
-        )}
-        {collapsed && (
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/90 shadow-sm mx-auto backdrop-blur-sm">
-            <Building2 className="h-6 w-6 text-medical-blue-600" />
-          </div>
-        )}
-      </div>
+          )}
+        </div>
 
       {/* Navigation Items */}
       <nav className="flex-1 space-y-1 px-2 py-4 overflow-y-auto relative z-10">
@@ -91,44 +91,44 @@ const Sidebar = ({ onCollapseChange }) => {
               key={item.path}
               onClick={() => navigate(item.path)}
               className={cn(
-                'w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
-                'hover:scale-[1.02] hover:shadow-md hover:shadow-black/10',
+                'w-full flex items-center gap-3.5 rounded-xl px-4 py-3 text-sm font-bold transition-all duration-300',
+                'hover:scale-[1.03] hover:shadow-premium hover:shadow-black/10',
                 active
-                  ? 'bg-white text-medical-blue-600 shadow-md shadow-black/10 scale-[1.02]'
-                  : 'text-white/90 hover:bg-white/10 hover:text-white'
+                  ? 'bg-white text-medical-blue-600 shadow-premium shadow-black/10 scale-[1.03] border border-white/20'
+                  : 'text-white/95 hover:bg-white/15 hover:text-white'
               )}
             >
               <Icon className={cn('flex-shrink-0 h-5 w-5', collapsed && 'mx-auto')} />
-              {!collapsed && <span>{item.label}</span>}
+              {!collapsed && <span className="font-semibold">{item.label}</span>}
             </button>
           )
         })}
       </nav>
 
-      {/* User Profile Section */}
+      {/* User Profile Section - Premium Design */}
       {!collapsed && (
-        <div className="border-t border-white/20 p-4 relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/90 backdrop-blur-sm shadow-sm">
+        <div className="border-t border-white/30 p-5 relative z-10 backdrop-blur-sm">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/95 backdrop-blur-md shadow-premium transition-all duration-300 hover:scale-110">
               <User className="h-5 w-5 text-medical-blue-600" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="truncate text-sm font-semibold text-white">{user?.name || 'User'}</p>
-              <p className="truncate text-xs text-white/80">{user?.role || 'Reception'}</p>
+              <p className="truncate text-sm font-bold text-white drop-shadow-sm">{user?.name || 'User'}</p>
+              <p className="truncate text-xs text-white/90 font-medium">{user?.role || 'Reception'}</p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Collapse Toggle */}
+      {/* Collapse Toggle - Premium Design */}
       <button
         onClick={handleToggle}
-        className="absolute -right-3 top-20 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-md hover:shadow-lg hover:scale-110 transition-all duration-200 z-20 border border-gray-200"
+        className="absolute -right-3 top-24 flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-premium hover:shadow-premium-lg hover:scale-110 active:scale-95 transition-all duration-300 z-20 border-2 border-gray-200/80"
       >
         {collapsed ? (
-          <ChevronRight className="h-4 w-4 text-medical-blue-600" />
+          <ChevronRight className="h-5 w-5 text-medical-blue-600 font-bold" />
         ) : (
-          <ChevronLeft className="h-4 w-4 text-medical-blue-600" />
+          <ChevronLeft className="h-5 w-5 text-medical-blue-600 font-bold" />
         )}
       </button>
     </aside>
