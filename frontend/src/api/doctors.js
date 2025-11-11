@@ -31,6 +31,18 @@ export const doctorsApi = {
     return response.data
   },
 
+  // Activate doctor (admin only)
+  activateDoctor: async (id) => {
+    const response = await api.post(`/doctors/${id}/activate`)
+    return response.data
+  },
+
+  // Deactivate doctor (admin only)
+  deactivateDoctor: async (id) => {
+    const response = await api.post(`/doctors/${id}/deactivate`)
+    return response.data
+  },
+
   // Get doctor schedule
   getDoctorSchedule: async (id, date) => {
     const response = await api.get(`/doctors/${id}/schedule`, {

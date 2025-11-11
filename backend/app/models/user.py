@@ -39,14 +39,31 @@ class User(db.Model):
         """Generate JWT token for user"""
         return create_access_token(identity=self.id)
     
-    def to_dict(self):
+    def to_dict(self, include_doctor=False):
         """Convert user to dictionary"""
-        return {
+        result = {
             'id': self.id,
             'username': self.username,
             'role': self.role.value,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+        
+        # Include linked doctor information if requested and user is a doctor
+        if include_doctor and self.role == UserRole.DOCTOR:
+            from app.models.doctor import Doctor
+            doctor = Doctor.query.filter_by(user_id=self.id).first()
+            if doctor:
+                result['doctor'] = {
+                    'id': doctor.id,
+                    'name': doctor.name,
+                    'specialty': doctor.specialty,
+                    'clinic_id': doctor.clinic_id
+                }
+                # Include clinic name if available
+                if doctor.clinic:
+                    result['doctor']['clinic_name'] = doctor.clinic.name
+        
+        return result
     
     def __repr__(self):
         return f'<User {self.username}>'

@@ -668,6 +668,10 @@ def move_patient_phase():
         if is_doctor and to_phase == 'with_doctor':
             return jsonify({'message': 'Doctors cannot move appointments to "with doctor" phase. Only receptionists can start consultations.'}), 403
         
+        # Receptionists cannot move from "with_doctor" to "completed" (only doctors can)
+        if is_receptionist and from_phase == 'with_doctor' and to_phase == 'completed':
+            return jsonify({'message': 'Receptionists cannot complete appointments. Only doctors can complete consultations.'}), 403
+        
         # Handle case where visit_id might be null (moving from appointments_today without visit)
         visit = None
         appointment = None
@@ -686,7 +690,11 @@ def move_patient_phase():
                 return jsonify({'message': 'You can only move appointments for your own patients'}), 403
         
         # Special handling for moving from appointments_today to waiting (check-in process)
+        # Only receptionists/admins can check-in patients (doctors cannot)
         if from_phase == 'appointments_today' and to_phase == 'waiting':
+            if is_doctor:
+                return jsonify({'message': 'Only receptionists can check in patients. Doctors cannot perform check-in.'}), 403
+            
             # Get appointment if not already retrieved
             if not appointment:
                 if not appointment_id:
@@ -743,6 +751,14 @@ def move_patient_phase():
                     visit.start_time = datetime.utcnow()
                 if not visit.called_time:
                     visit.called_time = datetime.utcnow()
+                
+                # Keep appointment status as CHECKED_IN (don't change to IN_PROGRESS)
+                # The visit status indicates the progress, appointment status stays CHECKED_IN
+                if visit.appointment_id:
+                    apt_to_update = Appointment.query.get(visit.appointment_id)
+                    if apt_to_update and apt_to_update.status != AppointmentStatus.CHECKED_IN:
+                        # Only update if not already checked in (shouldn't happen but be safe)
+                        apt_to_update.status = AppointmentStatus.CHECKED_IN
             elif new_status == 'completed':
                 visit.status = VisitStatus.COMPLETED
                 if not visit.end_time:
@@ -768,6 +784,25 @@ def move_patient_phase():
         
         doctor_queue_data = queue_service.get_doctor_queue(visit.doctor_id)
         socketio.emit('queue_updated', doctor_queue_data, room=f'doctor_{visit.doctor_id}')
+        
+        # Emit current_appointment_available event when moving to with_doctor
+        # This triggers auto-navigation for the doctor
+        if to_phase == 'with_doctor' and visit:
+            # Get doctor user_id for navigation
+            doctor = Doctor.query.get(visit.doctor_id)
+            doctor_user_id = None
+            if doctor and doctor.user_id:
+                doctor_user_id = doctor.user_id
+            
+            socketio.emit('current_appointment_available', {
+                'visit_id': visit.id,
+                'appointment_id': visit.appointment_id,
+                'doctor_id': visit.doctor_id,
+                'doctor_user_id': doctor_user_id,
+                'clinic_id': visit.clinic_id,
+                'visit': visit.to_dict(),
+                'navigate': True  # Flag to trigger navigation
+            }, room=f'doctor_{visit.doctor_id}')
         
         # Emit phase update event for the appointment's date
         # Use the appointment date if visit has one, otherwise use today
@@ -797,12 +832,37 @@ def move_patient_phase():
         socketio.emit('phases_updated', {
             'phases': phases,
             'clinic_id': visit.clinic_id,
-            'date': appointment_date.isoformat()
+            'date': appointment_date.isoformat(),
+            'doctor_id': visit.doctor_id if visit else None
         }, room=f'clinic_{visit.clinic_id}')
+        
+        # Also emit to doctor's room if applicable
+        if visit and visit.doctor_id:
+            socketio.emit('phases_updated', {
+                'phases': phases,
+                'clinic_id': visit.clinic_id,
+                'doctor_id': visit.doctor_id,
+                'date': appointment_date.isoformat()
+            }, room=f'doctor_{visit.doctor_id}')
+        
+        # Emit appointment_updated event if appointment exists
+        if visit.appointment_id:
+            appointment = Appointment.query.get(visit.appointment_id)
+            if appointment:
+                appointment_data = {
+                    'appointment': appointment.to_dict(),
+                    'clinic_id': appointment.clinic_id,
+                    'doctor_id': appointment.doctor_id
+                }
+                socketio.emit('appointment_updated', appointment_data, room=f'clinic_{appointment.clinic_id}')
+                socketio.emit('appointment_updated', appointment_data, room=f'doctor_{appointment.doctor_id}')
         
         return jsonify({
             'message': 'Patient moved successfully',
-            'visit': visit.to_dict()
+            'visit': visit.to_dict(),
+            'from_phase': from_phase,
+            'to_phase': to_phase,
+            'new_status': new_status
         }), 200
         
     except Exception as e:

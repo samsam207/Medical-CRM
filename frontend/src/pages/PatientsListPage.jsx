@@ -25,7 +25,7 @@ import {
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '../ui-kit'
 import { Input, Label } from '../ui-kit'
 import { Skeleton } from '../ui-kit'
-import { patientsApi } from '../api'
+import { patientsApi, clinicsApi, doctorsApi } from '../api'
 import { formatDate } from '../utils/formatters'
 import { useMutationWithRefetch } from '../hooks/useMutationWithRefetch'
 import { useDoctorFilters } from '../hooks/useDoctorFilters'
@@ -38,6 +38,8 @@ const PatientsListPage = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const debouncedSearchQuery = useDebounce(searchQuery, 400)
   const [genderFilter, setGenderFilter] = useState('all')
+  const [clinicFilter, setClinicFilter] = useState('all')
+  const [doctorFilter, setDoctorFilter] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
   const [selectedPatient, setSelectedPatient] = useState(null)
@@ -53,18 +55,22 @@ const PatientsListPage = () => {
     address: '',
     age: '',
     gender: 'male',
-    medical_history: ''
+    medical_history: '',
+    clinic_id: '',
+    doctor_id: ''
   })
 
   const queryClient = useQueryClient()
 
   // Fetch patients with pagination and filters
   const { data: patientsData, isLoading, error, refetch } = useQuery({
-    queryKey: ['patients', debouncedSearchQuery, genderFilter, currentPage, perPage],
+    queryKey: ['patients', debouncedSearchQuery, genderFilter, clinicFilter, doctorFilter, currentPage, perPage],
     queryFn: () => patientsApi.getPatients(addFilters({
       name: debouncedSearchQuery || undefined,
       phone: debouncedSearchQuery || undefined,
       gender: genderFilter !== 'all' ? genderFilter : undefined,
+      clinic_id: clinicFilter !== 'all' ? parseInt(clinicFilter) : undefined,
+      doctor_id: doctorFilter !== 'all' ? parseInt(doctorFilter) : undefined,
       page: currentPage,
       per_page: perPage
     })),
@@ -86,6 +92,112 @@ const PatientsListPage = () => {
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000
   })
+
+  // Fetch clinics for patient assignment and filtering
+  const { data: clinicsData } = useQuery({
+    queryKey: ['clinics', 'patients-page'],
+    queryFn: async () => {
+      const res = await clinicsApi.getClinics({ is_active: 'true' })
+      return res?.clinics || []
+    },
+    staleTime: 5 * 60 * 1000
+  })
+  const clinics = Array.isArray(clinicsData) ? clinicsData : []
+
+  // Fetch doctors for filter dropdown (filtered by selected clinic filter)
+  const { data: filterDoctorsData } = useQuery({
+    queryKey: ['doctors', 'patients-filter', clinicFilter],
+    queryFn: async () => {
+      if (clinicFilter === 'all') {
+        // If no clinic selected, fetch all active doctors
+        const res = await doctorsApi.getDoctors({ is_active: 'true' })
+        return res?.doctors || []
+      }
+      const res = await doctorsApi.getDoctors({ 
+        clinic_id: parseInt(clinicFilter),
+        is_active: 'true' 
+      })
+      return res?.doctors || []
+    },
+    enabled: true, // Always enabled for filter dropdown
+    staleTime: 5 * 60 * 1000
+  })
+  const filterDoctors = Array.isArray(filterDoctorsData) ? filterDoctorsData : []
+
+  // Reset doctor filter when clinic filter changes
+  useEffect(() => {
+    if (clinicFilter === 'all') {
+      setDoctorFilter('all')
+    } else if (doctorFilter !== 'all' && filterDoctors.length > 0) {
+      // Check if selected doctor belongs to selected clinic
+      const doctor = filterDoctors.find(d => d.id === parseInt(doctorFilter))
+      if (!doctor || doctor.clinic_id !== parseInt(clinicFilter)) {
+        setDoctorFilter('all')
+      }
+    }
+  }, [clinicFilter, doctorFilter, filterDoctors])
+
+  // Fetch doctors for patient assignment (filtered by selected clinic in create form)
+  const { data: doctorsData } = useQuery({
+    queryKey: ['doctors', 'patients-page', newPatientData.clinic_id],
+    queryFn: async () => {
+      if (!newPatientData.clinic_id) return []
+      const res = await doctorsApi.getDoctors({ 
+        clinic_id: parseInt(newPatientData.clinic_id),
+        is_active: 'true' 
+      })
+      return res?.doctors || []
+    },
+    enabled: !!newPatientData.clinic_id,
+    staleTime: 5 * 60 * 1000
+  })
+  const doctors = Array.isArray(doctorsData) ? doctorsData : []
+
+  // Fetch doctors for edit form (filtered by selected clinic in edit form)
+  // Use selectedPatient?.clinic_id directly in query key for reactivity
+  const { data: editDoctorsData } = useQuery({
+    queryKey: ['doctors', 'patients-page-edit', selectedPatient?.clinic_id],
+    queryFn: async () => {
+      const clinicId = selectedPatient?.clinic_id
+      if (!clinicId) return []
+      const res = await doctorsApi.getDoctors({ 
+        clinic_id: typeof clinicId === 'number' ? clinicId : parseInt(clinicId),
+        is_active: 'true' 
+      })
+      return res?.doctors || []
+    },
+    enabled: !!selectedPatient?.clinic_id && isEditModalOpen,
+    staleTime: 5 * 60 * 1000
+  })
+  const editDoctors = Array.isArray(editDoctorsData) ? editDoctorsData : []
+
+  // Reset doctor_id when clinic changes in create form
+  useEffect(() => {
+    if (newPatientData.clinic_id && newPatientData.doctor_id) {
+      // Check if selected doctor belongs to selected clinic
+      const doctor = doctors.find(d => d.id === parseInt(newPatientData.doctor_id))
+      if (!doctor || doctor.clinic_id !== parseInt(newPatientData.clinic_id)) {
+        setNewPatientData(prev => ({ ...prev, doctor_id: '' }))
+      }
+    }
+  }, [newPatientData.clinic_id, doctors])
+
+  // Reset doctor_id when clinic changes in edit form
+  useEffect(() => {
+    if (selectedPatient?.clinic_id && selectedPatient?.doctor_id && editDoctors.length > 0) {
+      // Check if selected doctor belongs to selected clinic
+      const doctorId = typeof selectedPatient.doctor_id === 'number' 
+        ? selectedPatient.doctor_id 
+        : parseInt(selectedPatient.doctor_id)
+      const clinicId = typeof selectedPatient.clinic_id === 'number' 
+        ? selectedPatient.clinic_id 
+        : parseInt(selectedPatient.clinic_id)
+      const doctor = editDoctors.find(d => d.id === doctorId)
+      if (!doctor || doctor.clinic_id !== clinicId) {
+        setSelectedPatient(prev => ({ ...prev, doctor_id: null }))
+      }
+    }
+  }, [selectedPatient?.clinic_id, selectedPatient?.doctor_id, editDoctors])
 
   // Fetch patient details
   const { data: patientDetailsData, isLoading: isLoadingDetails } = useQuery({
@@ -115,7 +227,9 @@ const PatientsListPage = () => {
         address: '',
         age: '',
         gender: 'male',
-        medical_history: ''
+        medical_history: '',
+        clinic_id: '',
+        doctor_id: ''
       })
     }
   })
@@ -148,7 +262,9 @@ const PatientsListPage = () => {
       const blob = await patientsApi.exportPatients({
         gender: genderFilter !== 'all' ? genderFilter : undefined,
         name: searchQuery || undefined,
-        phone: searchQuery || undefined
+        phone: searchQuery || undefined,
+        clinic_id: clinicFilter !== 'all' ? parseInt(clinicFilter) : undefined,
+        doctor_id: doctorFilter !== 'all' ? parseInt(doctorFilter) : undefined
       })
       
       const url = window.URL.createObjectURL(blob)
@@ -186,7 +302,15 @@ const PatientsListPage = () => {
   }
 
   const handleCreatePatient = () => {
-    createPatientMutation.mutate(newPatientData)
+    const patientData = {
+      ...newPatientData,
+      clinic_id: newPatientData.clinic_id ? parseInt(newPatientData.clinic_id) : null,
+      doctor_id: newPatientData.doctor_id ? parseInt(newPatientData.doctor_id) : null
+    }
+    // Remove empty strings
+    if (!patientData.clinic_id) delete patientData.clinic_id
+    if (!patientData.doctor_id) delete patientData.doctor_id
+    createPatientMutation.mutate(patientData)
   }
 
   const handleUpdatePatient = () => {
@@ -198,6 +322,24 @@ const PatientsListPage = () => {
       address: selectedPatient.address,
       medical_history: selectedPatient.medical_history
     }
+    
+    // Handle clinic_id and doctor_id - ensure they're numbers or null
+    if (selectedPatient.clinic_id) {
+      updateData.clinic_id = typeof selectedPatient.clinic_id === 'number' 
+        ? selectedPatient.clinic_id 
+        : parseInt(selectedPatient.clinic_id)
+    } else {
+      updateData.clinic_id = null
+    }
+    
+    if (selectedPatient.doctor_id) {
+      updateData.doctor_id = typeof selectedPatient.doctor_id === 'number' 
+        ? selectedPatient.doctor_id 
+        : parseInt(selectedPatient.doctor_id)
+    } else {
+      updateData.doctor_id = null
+    }
+    
     updatePatientMutation.mutate({
       id: selectedPatient.id,
       data: updateData
@@ -350,6 +492,49 @@ const PatientsListPage = () => {
                 <option value="male">ذكر</option>
                 <option value="female">أنثى</option>
                 <option value="other">آخر</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Label htmlFor="clinic-filter" className="sr-only">تصفية حسب العيادة</Label>
+              <select
+                id="clinic-filter"
+                value={clinicFilter}
+                onChange={(e) => {
+                  setClinicFilter(e.target.value)
+                  setCurrentPage(1)
+                }}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic"
+                aria-label="تصفية حسب العيادة"
+              >
+                <option value="all">كل العيادات</option>
+                {clinics.map(clinic => (
+                  <option key={clinic.id} value={clinic.id}>
+                    {clinic.name} - {clinic.room_number}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Label htmlFor="doctor-filter" className="sr-only">تصفية حسب الطبيب</Label>
+              <select
+                id="doctor-filter"
+                value={doctorFilter}
+                onChange={(e) => {
+                  setDoctorFilter(e.target.value)
+                  setCurrentPage(1)
+                }}
+                disabled={clinicFilter === 'all' && filterDoctors.length === 0}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic disabled:bg-gray-100 disabled:cursor-not-allowed"
+                aria-label="تصفية حسب الطبيب"
+              >
+                <option value="all">كل الأطباء</option>
+                {filterDoctors.map(doctor => (
+                  <option key={doctor.id} value={doctor.id}>
+                    {doctor.name} - {doctor.specialty}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -720,6 +905,50 @@ const PatientsListPage = () => {
                   rows="3"
                 />
               </div>
+              
+              {/* Clinic and Doctor Assignment */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-clinic" className="font-arabic">العيادة</Label>
+                  <select
+                    id="edit-clinic"
+                    value={selectedPatient.clinic_id ? String(selectedPatient.clinic_id) : ''}
+                    onChange={(e) => setSelectedPatient({
+                      ...selectedPatient,
+                      clinic_id: e.target.value ? parseInt(e.target.value) : null,
+                      doctor_id: null // Reset doctor when clinic changes
+                    })}
+                    className="w-full h-12 border-2 border-gray-200 rounded-lg px-4 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic"
+                  >
+                    <option value="">-- اختر العيادة --</option>
+                    {clinics.map(clinic => (
+                      <option key={clinic.id} value={clinic.id}>
+                        {clinic.name} - {clinic.room_number}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-doctor" className="font-arabic">الطبيب</Label>
+                  <select
+                    id="edit-doctor"
+                    value={selectedPatient.doctor_id ? String(selectedPatient.doctor_id) : ''}
+                    onChange={(e) => setSelectedPatient({
+                      ...selectedPatient,
+                      doctor_id: e.target.value ? parseInt(e.target.value) : null
+                    })}
+                    disabled={!selectedPatient.clinic_id}
+                    className="w-full h-12 border-2 border-gray-200 rounded-lg px-4 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  >
+                    <option value="">-- اختر الطبيب --</option>
+                    {editDoctors.map(doctor => (
+                      <option key={doctor.id} value={doctor.id}>
+                        {doctor.name} - {doctor.specialty}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
           )}
           
@@ -885,6 +1114,50 @@ const PatientsListPage = () => {
                 className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic min-h-[100px]"
                 rows="3"
               />
+            </div>
+            
+            {/* Clinic and Doctor Assignment */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t">
+              <div className="space-y-2">
+                <Label htmlFor="create-clinic" className="font-arabic">العيادة</Label>
+                <select
+                  id="create-clinic"
+                  value={newPatientData.clinic_id}
+                  onChange={(e) => setNewPatientData({
+                    ...newPatientData,
+                    clinic_id: e.target.value,
+                    doctor_id: '' // Reset doctor when clinic changes
+                  })}
+                  className="w-full h-12 border-2 border-gray-200 rounded-lg px-4 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic"
+                >
+                  <option value="">-- اختر العيادة --</option>
+                  {clinics.map(clinic => (
+                    <option key={clinic.id} value={clinic.id}>
+                      {clinic.name} - {clinic.room_number}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="create-doctor" className="font-arabic">الطبيب</Label>
+                <select
+                  id="create-doctor"
+                  value={newPatientData.doctor_id}
+                  onChange={(e) => setNewPatientData({
+                    ...newPatientData,
+                    doctor_id: e.target.value
+                  })}
+                  disabled={!newPatientData.clinic_id}
+                  className="w-full h-12 border-2 border-gray-200 rounded-lg px-4 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic disabled:bg-gray-100 disabled:cursor-not-allowed"
+                >
+                  <option value="">-- اختر الطبيب --</option>
+                  {doctors.map(doctor => (
+                    <option key={doctor.id} value={doctor.id}>
+                      {doctor.name} - {doctor.specialty}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
           

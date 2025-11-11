@@ -19,6 +19,7 @@ import { useSocket } from '../hooks/useSocket'
 import { useMutationWithRefetch } from '../hooks/useMutationWithRefetch'
 import { useDoctorFilters } from '../hooks/useDoctorFilters'
 import { useAuthStore } from '../stores/authStore'
+import { useQueueStore } from '../stores/queueStore'
 import { Button, Badge } from '../ui-kit'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui-kit'
 import { Input, Label } from '../ui-kit'
@@ -30,8 +31,13 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
   const queryClient = useQueryClient()
   const { doctorId, isDoctor } = useDoctorFilters()
   const { user } = useAuthStore()
+  const { selectedClinic: queueStoreClinic, setSelectedClinic: setQueueStoreClinic } = useQueueStore()
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
-  const [selectedClinic, setSelectedClinic] = useState(clinicId || null)
+  // Use queueStore clinic if available, otherwise use prop or default
+  const selectedClinic = queueStoreClinic || clinicId || null
+  const setSelectedClinic = (clinicId) => {
+    setQueueStoreClinic(clinicId)
+  }
   const [selectedDoctor, setSelectedDoctor] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [draggedItem, setDraggedItem] = useState(null)
@@ -61,16 +67,22 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
     enabled: !!selectedClinic
   })
 
-  // Auto-select first clinic if none selected
+  // Auto-select first clinic if none selected (sync with queueStore)
   useEffect(() => {
-    if (clinics.length > 0 && !selectedClinic) {
+    if (isDoctor && clinicId) {
+      // For doctors, always use their clinic
+      if (selectedClinic !== clinicId) {
+        setSelectedClinic(clinicId)
+      }
+    } else if (!isDoctor && clinics.length > 0 && !selectedClinic) {
+      // For receptionists/admins, use first clinic if none selected
       setSelectedClinic(clinics[0].id)
     }
-  }, [clinics, selectedClinic])
+  }, [clinics, selectedClinic, isDoctor, clinicId])
 
   // Fetch queue phases data
   const { data: phasesData, isLoading, error, refetch: refetchPhases } = useQuery({
-    queryKey: ['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId],
+    queryKey: ['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId, selectedDoctor],
     queryFn: () => {
       const filterDoctorId = !isDoctor && selectedDoctor !== 'all' ? parseInt(selectedDoctor) : null
       return queueApi.getQueuePhases(selectedClinic, selectedDate, filterDoctorId)
@@ -105,7 +117,7 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
         (!isDoctor || !data.doctor_id || data.doctor_id === doctorId)
       
       if (isRelevantUpdate) {
-        queryClient.setQueryData(['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId], {
+        queryClient.setQueryData(['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId, selectedDoctor], {
           phases: data.phases,
           date: data.date,
           clinic_id: data.clinic_id
@@ -120,7 +132,7 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
     return () => {
       socket.off('phases_updated', handlePhasesUpdate)
     }
-  }, [socket, selectedClinic, selectedDate, queryClient, refetchPhases, isDoctor, doctorId])
+  }, [socket, selectedClinic, selectedDate, queryClient, refetchPhases, isDoctor, doctorId, selectedDoctor])
 
   // Move patient mutation
   const movePatientMutation = useMutationWithRefetch({
@@ -131,7 +143,7 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
     onErrorMessage: 'فشل نقل المريض',
     onSuccessCallback: async () => {
       queryClient.invalidateQueries({ 
-        queryKey: ['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId],
+        queryKey: ['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId, selectedDoctor],
         exact: true
       })
       queryClient.invalidateQueries({ 
@@ -187,14 +199,24 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
   const handleDragOver = useCallback((e, phaseId) => {
     e.preventDefault()
     
+    // Get the dragged item phase
+    const draggedPhase = draggedItem?.phaseId || draggedItem?.queue_phase
+    
+    // Doctors cannot move to "with_doctor" phase
     if (isDoctor && phaseId === 'with_doctor') {
+      e.dataTransfer.dropEffect = 'none'
+      return
+    }
+    
+    // Reception cannot move from "with_doctor" to "completed" (only doctors can)
+    if (!isDoctor && draggedPhase === 'with_doctor' && phaseId === 'completed') {
       e.dataTransfer.dropEffect = 'none'
       return
     }
     
     e.dataTransfer.dropEffect = 'move'
     setDragOverPhase(phaseId)
-  }, [isDoctor])
+  }, [isDoctor, draggedItem])
 
   // Handle drag leave
   const handleDragLeave = useCallback(() => {
@@ -207,12 +229,7 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
     e.stopPropagation()
     setDragOverPhase(null)
     
-    if (isDoctor && targetPhaseId === 'with_doctor') {
-      setDraggedItem(null)
-      alert('لا يمكن للأطباء نقل المواعيد إلى مرحلة "مع الطبيب". فقط موظفو الاستقبال يمكنهم بدء الاستشارات.')
-      return
-    }
-    
+    // Parse drag data
     let itemData = null
     try {
       const dataTransferData = e.dataTransfer.getData('text/plain')
@@ -231,9 +248,30 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
     }
 
     const sourcePhaseId = item.phaseId || item.queue_phase || 'appointments_today'
+    
+    // Doctors cannot move to "with_doctor" phase (only receptionists can start consultations)
+    if (isDoctor && targetPhaseId === 'with_doctor') {
+      setDraggedItem(null)
+      alert('لا يمكن للأطباء نقل المواعيد إلى مرحلة "مع الطبيب". فقط موظفو الاستقبال يمكنهم بدء الاستشارات.')
+      return
+    }
+    
+    // Doctors cannot check-in patients (move from appointments_today to waiting)
+    if (isDoctor && sourcePhaseId === 'appointments_today' && targetPhaseId === 'waiting') {
+      setDraggedItem(null)
+      alert('لا يمكن للأطباء تسجيل دخول المرضى. فقط موظفو الاستقبال يمكنهم تسجيل دخول المرضى.')
+      return
+    }
+    
+    // Reception cannot move from "with_doctor" to "completed" (only doctors can)
+    if (!isDoctor && sourcePhaseId === 'with_doctor' && targetPhaseId === 'completed') {
+      setDraggedItem(null)
+      alert('لا يمكن لموظفي الاستقبال إكمال المواعيد. فقط الأطباء يمكنهم إكمال الاستشارات.')
+      return
+    }
 
     // Optimistic update
-    queryClient.setQueryData(['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId], (oldData) => {
+    queryClient.setQueryData(['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId, selectedDoctor], (oldData) => {
       if (!oldData?.phases) return oldData
       
       const newPhases = { ...oldData.phases }
@@ -260,7 +298,7 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
         toPhase: targetPhaseId
       }, {
         onError: () => {
-          queryClient.invalidateQueries({ queryKey: ['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId] })
+          queryClient.invalidateQueries({ queryKey: ['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId, selectedDoctor] })
           refetchPhases()
           alert(`فشل تسجيل دخول المريض`)
         }
@@ -272,13 +310,13 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
         toPhase: targetPhaseId
       }, {
         onError: () => {
-          queryClient.invalidateQueries({ queryKey: ['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId] })
+          queryClient.invalidateQueries({ queryKey: ['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId, selectedDoctor] })
           refetchPhases()
           alert(`فشل نقل المريض`)
         }
       })
     } else {
-      queryClient.invalidateQueries({ queryKey: ['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId] })
+      queryClient.invalidateQueries({ queryKey: ['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId, selectedDoctor] })
       refetchPhases()
       alert('لا يمكن نقل هذا الموعد. يرجى تسجيل دخول المريض أولاً.')
     }
@@ -515,49 +553,53 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
               </div>
             </div>
 
-            {/* Clinic Filter */}
-            <div className="space-y-2">
-              <Label htmlFor="queue-clinic" className="font-arabic">العيادة</Label>
-              <div className="flex items-center gap-2">
-                <Filter className="w-4 h-4 text-gray-400" aria-hidden="true" />
-                <select
-                  id="queue-clinic"
-                  value={selectedClinic || ''}
-                  onChange={(e) => setSelectedClinic(parseInt(e.target.value))}
-                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic"
-                  aria-label="فلترة حسب العيادة"
-                >
-                  <option value="">اختر عيادة</option>
-                  {clinics.map(clinic => (
-                    <option key={clinic.id} value={clinic.id}>
-                      {clinic.name}
-                    </option>
-                  ))}
-                </select>
+            {/* Clinic Filter - Only for Reception/Admin */}
+            {!isDoctor && (
+              <div className="space-y-2">
+                <Label htmlFor="queue-clinic" className="font-arabic">العيادة</Label>
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-gray-400" aria-hidden="true" />
+                  <select
+                    id="queue-clinic"
+                    value={selectedClinic || ''}
+                    onChange={(e) => setSelectedClinic(parseInt(e.target.value))}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic"
+                    aria-label="فلترة حسب العيادة"
+                  >
+                    <option value="">اختر عيادة</option>
+                    {clinics.map(clinic => (
+                      <option key={clinic.id} value={clinic.id}>
+                        {clinic.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Doctor Filter */}
-            <div className="space-y-2">
-              <Label htmlFor="queue-doctor" className="font-arabic">الطبيب</Label>
-              <div className="flex items-center gap-2">
-                <User className="w-4 h-4 text-gray-400" aria-hidden="true" />
-                <select
-                  id="queue-doctor"
-                  value={selectedDoctor}
-                  onChange={(e) => setSelectedDoctor(e.target.value)}
-                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic"
-                  aria-label="فلترة حسب الطبيب"
-                >
-                  <option value="all">كل الأطباء</option>
-                  {doctors.map(doctor => (
-                    <option key={doctor.id} value={doctor.id}>
-                      {doctor.name}
-                    </option>
-                  ))}
-                </select>
+            {/* Doctor Filter - Only for Reception/Admin */}
+            {!isDoctor && (
+              <div className="space-y-2">
+                <Label htmlFor="queue-doctor" className="font-arabic">الطبيب</Label>
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4 text-gray-400" aria-hidden="true" />
+                  <select
+                    id="queue-doctor"
+                    value={selectedDoctor}
+                    onChange={(e) => setSelectedDoctor(e.target.value)}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic"
+                    aria-label="فلترة حسب الطبيب"
+                  >
+                    <option value="all">كل الأطباء</option>
+                    {doctors.map(doctor => (
+                      <option key={doctor.id} value={doctor.id}>
+                        {doctor.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Search */}
             <div className="space-y-2">
@@ -732,7 +774,7 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
                           </div>
 
                           {/* Action Buttons */}
-                          {phase.id === 'appointments_today' && (
+                          {phase.id === 'appointments_today' && !isDoctor && (
                             <Button
                               size="sm"
                               className="w-full"
@@ -747,7 +789,7 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
                                 const button = e.currentTarget
                                 button.disabled = true
                                 
-                                queryClient.setQueryData(['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId], (oldData) => {
+                                queryClient.setQueryData(['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId, selectedDoctor], (oldData) => {
                                   if (!oldData?.phases) return oldData
                                   
                                   const newPhases = { ...oldData.phases }
@@ -774,7 +816,7 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
                                   onSuccess: () => {},
                                   onError: () => {
                                     button.disabled = false
-                                    queryClient.invalidateQueries({ queryKey: ['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId] })
+                                    queryClient.invalidateQueries({ queryKey: ['queue-phases', selectedClinic, selectedDate, isDoctor, doctorId, selectedDoctor] })
                                     refetchPhases()
                                     alert(`فشل تسجيل دخول المريض`)
                                   }
@@ -808,7 +850,7 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
                             </Button>
                           )}
 
-                          {phase.id === 'with_doctor' && (
+                          {phase.id === 'with_doctor' && isDoctor && (
                             <Button
                               size="sm"
                               variant="success"
@@ -830,7 +872,7 @@ const QueueManagement = ({ clinicId, onQueueUpdate }) => {
                             </Button>
                           )}
 
-                          {phase.id === 'completed' && (
+                          {phase.id === 'completed' && !isDoctor && (
                             <Button
                               size="sm"
                               variant="outline"

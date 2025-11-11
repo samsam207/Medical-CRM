@@ -1,0 +1,100 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Backend: Start Flask Server",
+      "type": "shell",
+      "command": "${workspaceFolder}\\backend\\venv\\Scripts\\python.exe",
+      "args": ["run.py"],
+      "options": {
+        "cwd": "${workspaceFolder}/backend",
+        "env": {
+          "FLASK_ENV": "development",
+          "FLASK_DEBUG": "True",
+          "FLASK_HOST": "0.0.0.0",
+          "FLASK_PORT": "5000"
+        }
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "group": "backend"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "Frontend: Start Vite Dev Server",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "dev"],
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "group": "frontend"
+      },
+      "isBackground": true
+    },
+    {
+      "label": "Backend: Install Dependencies",
+      "type": "shell",
+      "command": "${workspaceFolder}\\backend\\venv\\Scripts\\pip.exe",
+      "args": ["install", "-r", "requirements.txt"],
+      "options": {
+        "cwd": "${workspaceFolder}/backend"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Frontend: Install Dependencies",
+      "type": "shell",
+      "command": "npm",
+      "args": ["install"],
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Backend: Run Migrations",
+      "type": "shell",
+      "command": "${workspaceFolder}\\backend\\venv\\Scripts\\python.exe",
+      "args": ["-m", "flask", "db", "upgrade"],
+      "options": {
+        "cwd": "${workspaceFolder}/backend"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Full Stack: Start Both Servers",
+      "dependsOrder": "parallel",
+      "dependsOn": [
+        "Backend: Start Flask Server",
+        "Frontend: Start Vite Dev Server"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "group": "full-stack"
+      }
+    }
+  ]
+}
+

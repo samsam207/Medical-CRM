@@ -1,0 +1,77 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Flask Backend",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/backend/run.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "FLASK_ENV": "development",
+        "FLASK_DEBUG": "True",
+        "FLASK_HOST": "0.0.0.0",
+        "FLASK_PORT": "5000",
+        "PYTHONPATH": "${workspaceFolder}/backend"
+      },
+      "python": "${workspaceFolder}/backend/venv/Scripts/python.exe",
+      "justMyCode": true,
+      "gevent": false
+    },
+    {
+      "name": "Python: Flask Backend (Current File)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/backend",
+      "env": {
+        "FLASK_ENV": "development",
+        "FLASK_DEBUG": "True",
+        "FLASK_HOST": "0.0.0.0",
+        "FLASK_PORT": "5000",
+        "PYTHONPATH": "${workspaceFolder}/backend"
+      },
+      "python": "${workspaceFolder}/backend/venv/Scripts/python.exe",
+      "justMyCode": true
+    },
+    {
+      "name": "Node.js: Frontend (Vite)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}/frontend",
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "port": 9229,
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "Attach to Frontend (Vite)",
+      "type": "node",
+      "request": "attach",
+      "port": 9229,
+      "restart": true,
+      "cwd": "${workspaceFolder}/frontend",
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full Stack (Backend + Frontend)",
+      "configurations": [
+        "Python: Flask Backend",
+        "Node.js: Frontend (Vite)"
+      ],
+      "stopAll": true,
+      "presentation": {
+        "hidden": false,
+        "group": "full-stack",
+        "order": 1
+      }
+    }
+  ]
+}
+

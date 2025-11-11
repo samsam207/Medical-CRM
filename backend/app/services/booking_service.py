@@ -16,6 +16,10 @@ class BookingService:
         if not doctor:
             return []
         
+        # Check if doctor is active
+        if not doctor.is_active:
+            return []
+        
         # Get day of week for the date
         # Python weekday(): Monday=0, Tuesday=1, ..., Sunday=6
         # Our DB format: Sunday=0, Monday=1, ..., Saturday=6
@@ -79,7 +83,10 @@ class BookingService:
                     slots = []
                     for hour in sorted(valid_hours):
                         # Generate 30-minute slots for this hour (e.g., hour 9 → 9:00 and 9:30)
-                        hour_slots = get_time_slots(hour, hour + 1, 30, date)
+                        # get_time_slots(hour, hour + 1, 30, date) will generate slots for this hour only
+                        # It handles hour 23 correctly (will generate 23:00 and 23:30, not 24:00)
+                        end_hour = hour + 1 if hour < 23 else 24  # Allow 24 for last hour
+                        hour_slots = get_time_slots(hour, end_hour, 30, date)
                         slots.extend(hour_slots)
                     
                     # Update available_hours to only valid hours
@@ -213,13 +220,57 @@ class BookingService:
         if not doctor:
             raise ValueError("Doctor not found")
         
-        day_name = start_time.strftime('%A')
-        if not doctor.is_working_on_day(day_name):
-            raise ValueError(f"Doctor doesn't work on {day_name}")
+        # Check if doctor is active
+        if not doctor.is_active:
+            raise ValueError("Doctor is not active")
         
-        # Check working hours
-        if not is_business_hours(start_time, doctor.get_working_hours()):
-            raise ValueError("Appointment outside working hours")
+        # Check if doctor is available at this specific time using DoctorSchedule table
+        # Python weekday(): Monday=0, Tuesday=1, ..., Sunday=6
+        # Our DB format: Sunday=0, Monday=1, ..., Saturday=6
+        python_weekday = start_time.weekday()  # Python: Monday=0, Sunday=6
+        our_day_of_week = (python_weekday + 1) % 7  # Convert to our format
+        appointment_hour = start_time.hour
+        
+        # Check DoctorSchedule table first
+        from app.models.doctor_schedule import DoctorSchedule
+        
+        # Calculate all hours covered by this appointment
+        # Appointment duration is in minutes, so we need to check all hours it spans
+        appointment_duration_hours = (service.duration + 29) // 30  # Round up to nearest 30-minute slot
+        hours_to_check = []
+        current_check_time = start_time
+        while current_check_time < end_time:
+            hours_to_check.append(current_check_time.hour)
+            current_check_time += timedelta(minutes=30)
+        
+        # Remove duplicates while preserving order
+        hours_to_check = list(dict.fromkeys(hours_to_check))
+        
+        # Check if all required hours are available in DoctorSchedule
+        schedule_entries = DoctorSchedule.query.filter_by(
+            doctor_id=data['doctor_id'],
+            day_of_week=our_day_of_week,
+            is_available=True
+        ).filter(DoctorSchedule.hour.in_(hours_to_check)).all()
+        
+        available_hours = {entry.hour for entry in schedule_entries}
+        missing_hours = set(hours_to_check) - available_hours
+        
+        if schedule_entries and len(missing_hours) == 0:
+            # All required hours are available in DoctorSchedule table - this is valid
+            pass
+        elif schedule_entries and len(missing_hours) > 0:
+            # Some hours are missing - this is invalid
+            raise ValueError(f"Appointment spans hours not in doctor's schedule: {sorted(missing_hours)}")
+        else:
+            # No DoctorSchedule entries found - fall back to old working_days and working_hours JSON fields
+            day_name = start_time.strftime('%A')
+            if not doctor.is_working_on_day(day_name):
+                raise ValueError(f"Doctor doesn't work on {day_name}")
+            
+            # Check working hours using old JSON field
+            if not is_business_hours(start_time, doctor.get_working_hours()):
+                raise ValueError("Appointment outside working hours")
         
         # Create appointment
         appointment = Appointment(

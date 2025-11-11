@@ -47,8 +47,8 @@ export const patientsApi = {
   },
 
   // Get patient statistics
-  getStatistics: async () => {
-    const response = await api.get('/patients/statistics')
+  getStatistics: async (params = {}) => {
+    const response = await api.get('/patients/statistics', { params })
     return response.data
   }
 }

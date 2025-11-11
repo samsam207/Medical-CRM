@@ -345,11 +345,19 @@ def get_payment_statistics():
         clinic_id = request.args.get('clinic_id', type=int)
         doctor_id = request.args.get('doctor_id', type=int)
         
+        # Validate clinic_id and doctor_id
+        # request.args.get('clinic_id', type=int) returns None if not provided or invalid
+        # So we only need to check if it's a valid positive integer
+        if clinic_id is not None and clinic_id <= 0:
+            clinic_id = None
+        if doctor_id is not None and doctor_id <= 0:
+            doctor_id = None
+        
         # Build base query with filters
         base_query = Payment.query
         if clinic_id or doctor_id:
-            # Join with visits to filter by clinic/doctor
-            base_query = base_query.join(Visit)
+            # Join with visits to filter by clinic/doctor (payments must have visits for filtering)
+            base_query = base_query.join(Visit, Payment.visit_id == Visit.id)
             if clinic_id:
                 base_query = base_query.filter(Visit.clinic_id == clinic_id)
             if doctor_id:
@@ -372,7 +380,7 @@ def get_payment_statistics():
         # Calculate totals - need to rebuild query for aggregations
         revenue_query = db.session.query(db.func.sum(Payment.amount_paid))
         if clinic_id or doctor_id:
-            revenue_query = revenue_query.join(Visit)
+            revenue_query = revenue_query.join(Visit, Payment.visit_id == Visit.id)
             if clinic_id:
                 revenue_query = revenue_query.filter(Visit.clinic_id == clinic_id)
             if doctor_id:
@@ -382,7 +390,7 @@ def get_payment_statistics():
         # Total refunds
         refunds_query = db.session.query(db.func.sum(Payment.amount_paid))
         if clinic_id or doctor_id:
-            refunds_query = refunds_query.join(Visit)
+            refunds_query = refunds_query.join(Visit, Payment.visit_id == Visit.id)
             if clinic_id:
                 refunds_query = refunds_query.filter(Visit.clinic_id == clinic_id)
             if doctor_id:
@@ -392,7 +400,7 @@ def get_payment_statistics():
         # Pending amount
         pending_query = db.session.query(db.func.sum(Payment.total_amount - Payment.amount_paid))
         if clinic_id or doctor_id:
-            pending_query = pending_query.join(Visit)
+            pending_query = pending_query.join(Visit, Payment.visit_id == Visit.id)
             if clinic_id:
                 pending_query = pending_query.filter(Visit.clinic_id == clinic_id)
             if doctor_id:

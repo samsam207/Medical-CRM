@@ -209,7 +209,8 @@ const DoctorFormModal = ({ isOpen, onClose, onSave, doctor = null, clinics = [] 
       share_percentage: parseFloat(formData.share_percentage) || 0.7,
       schedule: scheduleArray,
       working_days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-      working_hours: { start: '09:00', 'end': '17:00' }
+      working_hours: { start: '09:00', 'end': '17:00' },
+      create_user: formData.create_user && !doctor
     }
     
     if (userId) {

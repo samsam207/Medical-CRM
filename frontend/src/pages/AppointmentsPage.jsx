@@ -29,11 +29,18 @@ import { appointmentsApi, clinicsApi, doctorsApi } from '../api'
 import { formatDate, formatTime } from '../utils/formatters'
 import { useMutationWithRefetch } from '../hooks/useMutationWithRefetch'
 import { useDoctorFilters } from '../hooks/useDoctorFilters'
+import { useSocket } from '../hooks/useSocket'
+import { useAuthStore } from '../stores/authStore'
 import PageContainer from '../components/layout/PageContainer'
 
 const AppointmentsPage = () => {
   const queryClient = useQueryClient()
   const { doctorId, clinicId, isDoctor, addFilters } = useDoctorFilters()
+  const { user } = useAuthStore()
+  const { socket } = useSocket()
+  
+  // Check if user is receptionist (not doctor)
+  const isReceptionist = user?.role === 'receptionist' || user?.role === 'admin'
   
   // Filters
   const [selectedDate, setSelectedDate] = useState(new Date())
@@ -44,6 +51,7 @@ const AppointmentsPage = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [useDateRange, setUseDateRange] = useState(false)
+  const [dateFilterType, setDateFilterType] = useState('today') // 'today', 'range', or 'all'
   
   // Auto-set filters for doctors
   useEffect(() => {
@@ -85,12 +93,14 @@ const AppointmentsPage = () => {
     per_page: perPage
   }
   
-  if (useDateRange && startDate && endDate) {
+  // Only add date filters if date filter is enabled (not 'all')
+  if (dateFilterType === 'range' && startDate && endDate) {
     queryParams.start_date = startDate
     queryParams.end_date = endDate
-  } else {
+  } else if (dateFilterType === 'today') {
     queryParams.date = selectedDate.toISOString().split('T')[0]
   }
+  // If dateFilterType === 'all', don't add any date parameters
   
   if (clinicFilter !== 'all') queryParams.clinic_id = parseInt(clinicFilter)
   if (doctorFilter !== 'all') queryParams.doctor_id = parseInt(doctorFilter)
@@ -256,6 +266,84 @@ const AppointmentsPage = () => {
     )
   })
 
+  // Listen for Socket.IO events
+  useEffect(() => {
+    if (!socket) return
+
+    const handlePhasesUpdated = (data) => {
+      // Update appointment status if it's in the current list
+      queryClient.setQueryData(['appointments', queryParams], (oldData) => {
+        if (!oldData?.appointments) return oldData
+        
+        const updatedAppointments = oldData.appointments.map(apt => {
+          // Check if this appointment is in the updated phases
+          const allPhases = [
+            ...(data.phases?.appointments_today || []),
+            ...(data.phases?.waiting || []),
+            ...(data.phases?.with_doctor || []),
+            ...(data.phases?.completed || [])
+          ]
+          
+          const updatedAppointment = allPhases.find(phaseApt => phaseApt.id === apt.id)
+          if (updatedAppointment) {
+            return { ...apt, status: updatedAppointment.status || apt.status }
+          }
+          return apt
+        })
+        
+        return { ...oldData, appointments: updatedAppointments }
+      })
+    }
+
+    const handleAppointmentCompleted = (data) => {
+      // Update appointment status to completed
+      queryClient.setQueryData(['appointments', queryParams], (oldData) => {
+        if (!oldData?.appointments) return oldData
+        
+        const updatedAppointments = oldData.appointments.map(apt => {
+          if (apt.id === data.appointment?.id) {
+            return { ...apt, status: 'completed' }
+          }
+          return apt
+        })
+        
+        return { ...oldData, appointments: updatedAppointments }
+      })
+      
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries(['appointments'])
+    }
+
+    const handleAppointmentUpdated = (data) => {
+      // Update appointment status in UI when appointment is updated from queue
+      queryClient.setQueryData(['appointments', queryParams], (oldData) => {
+        if (!oldData?.appointments) return oldData
+        
+        const updatedAppointments = oldData.appointments.map(apt => {
+          if (apt.id === data.appointment?.id) {
+            return { ...apt, ...data.appointment }
+          }
+          return apt
+        })
+        
+        return { ...oldData, appointments: updatedAppointments }
+      })
+      
+      // Invalidate queue phases query to refresh queue
+      queryClient.invalidateQueries(['queue-phases'])
+    }
+
+    socket.on('phases_updated', handlePhasesUpdated)
+    socket.on('appointment_updated', handleAppointmentUpdated)
+    socket.on('appointment_completed', handleAppointmentCompleted)
+
+    return () => {
+      socket.off('phases_updated', handlePhasesUpdated)
+      socket.off('appointment_updated', handleAppointmentUpdated)
+      socket.off('appointment_completed', handleAppointmentCompleted)
+    }
+  }, [socket, queryClient, queryParams])
+
   const handleViewAppointment = (appointment) => {
     setSelectedAppointment(appointment)
     setIsViewModalOpen(true)
@@ -299,6 +387,18 @@ const AppointmentsPage = () => {
 
   const handleSaveEdit = () => {
     if (!selectedAppointment) return
+    
+    // Date validation: Only allow status changes (except cancel) if appointment date is today
+    if (editForm.status && editForm.status !== selectedAppointment.status) {
+      const appointmentDate = selectedAppointment.start_time ? new Date(selectedAppointment.start_time).toDateString() : null
+      const today = new Date().toDateString()
+      
+      // Allow canceling any day, but restrict other status changes to today
+      if (editForm.status.toLowerCase() !== 'cancelled' && appointmentDate !== today) {
+        alert('يمكن تغيير حالة الموعد فقط لمواعيد اليوم. الاستثناء: يمكن إلغاء المواعيد في أي يوم.')
+        return
+      }
+    }
     
     const updateData = {
       status: editForm.status,
@@ -445,9 +545,11 @@ const AppointmentsPage = () => {
   }
 
   const resetFilters = () => {
+    setDateFilterType('today')
     setSelectedDate(new Date())
     setStartDate('')
     setEndDate('')
+    setUseDateRange(false)
     setClinicFilter('all')
     setDoctorFilter('all')
     setStatusFilter('all')
@@ -531,24 +633,29 @@ const AppointmentsPage = () => {
                 <Calendar className="w-4 h-4 text-gray-400" aria-hidden="true" />
                 <select
                   id="date-filter-type"
-                  value={useDateRange ? 'range' : 'today'}
+                  value={dateFilterType}
                   onChange={(e) => {
-                    const isRange = e.target.value === 'range'
-                    setUseDateRange(isRange)
-                    if (!isRange) {
+                    const newType = e.target.value
+                    setDateFilterType(newType)
+                    setUseDateRange(newType === 'range')
+                    if (newType === 'today') {
                       setStartDate('')
                       setEndDate('')
                       setSelectedDate(new Date())
+                    } else if (newType === 'all') {
+                      setStartDate('')
+                      setEndDate('')
                     }
                   }}
                   className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium focus:border-medical-blue-500 focus:ring-2 focus:ring-medical-blue-100 bg-white text-gray-900 font-arabic"
                   aria-label="نوع فلترة التاريخ"
                 >
+                  <option value="all">كل المواعيد</option>
                   <option value="today">تاريخ واحد</option>
                   <option value="range">نطاق تاريخ</option>
                 </select>
               </div>
-              {!useDateRange ? (
+              {dateFilterType === 'today' && (
                 <Input
                   type="date"
                   value={selectedDate.toISOString().split('T')[0]}
@@ -556,7 +663,8 @@ const AppointmentsPage = () => {
                   className="text-sm font-arabic"
                   aria-label="اختر التاريخ"
                 />
-              ) : (
+              )}
+              {dateFilterType === 'range' && (
                 <div className="flex gap-2">
                   <Input
                     type="date"
@@ -975,7 +1083,7 @@ const AppointmentsPage = () => {
                   <option value="confirmed">مؤكد</option>
                   <option value="checked_in">تم الحضور</option>
                   <option value="in_progress">قيد التنفيذ</option>
-                  <option value="completed">مكتمل</option>
+                  {isDoctor && <option value="completed">مكتمل</option>}
                   <option value="cancelled">ملغي</option>
                   <option value="no_show">لم يحضر</option>
                 </select>

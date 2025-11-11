@@ -16,6 +16,18 @@ if __name__ == '__main__':
     host = os.environ.get('FLASK_HOST', '0.0.0.0')
     port = int(os.environ.get('FLASK_PORT', 5000))
     
+    # Check if port is available
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((host, port))
+        sock.close()
+    except OSError:
+        print(f"ERROR: Port {port} is already in use!")
+        print(f"Please stop the process using port {port} or set FLASK_PORT to a different port.")
+        print("You can find the process using: netstat -ano | findstr :5000")
+        exit(1)
+    
     print(f"Starting Medical CRM server on {host}:{port}")
     print(f"Debug mode: {debug}")
     print("SocketIO enabled for real-time updates")

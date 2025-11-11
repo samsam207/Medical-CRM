@@ -33,33 +33,76 @@ def validate_appointment_time(doctor_id, start_time, end_time, appointment_id=No
     if not doctor:
         return False, "Doctor not found"
     
-    # Check if appointment is within working hours
+    # Check if appointment is within working hours using DoctorSchedule table
     appointment_date = start_time.date()
     day_name = appointment_date.strftime('%A')
     
-    # First check DoctorSchedule table, then fall back to old working_days JSON
+    # Python weekday(): Monday=0, Tuesday=1, ..., Sunday=6
+    # Our DB format: Sunday=0, Monday=1, ..., Saturday=6
     day_of_week = appointment_date.weekday()  # Python: Monday=0, Sunday=6
     our_day_of_week = (day_of_week + 1) % 7  # Our format: Sunday=0, Monday=1, ..., Saturday=6
     
+    # Calculate all hours covered by this appointment
+    from datetime import timedelta
+    hours_to_check = []
+    current_check_time = start_time
+    while current_check_time < end_time:
+        hours_to_check.append(current_check_time.hour)
+        current_check_time += timedelta(minutes=30)
+    
+    # Remove duplicates while preserving order
+    hours_to_check = list(dict.fromkeys(hours_to_check))
+    
+    # Check DoctorSchedule table first
     from app.models.doctor_schedule import DoctorSchedule
-    has_schedule = DoctorSchedule.query.filter_by(
+    
+    # Check if doctor has any schedule entries for this day
+    has_any_schedule = DoctorSchedule.query.filter_by(
         doctor_id=doctor_id,
         day_of_week=our_day_of_week,
         is_available=True
     ).first() is not None
     
-    # Only check old working_days if no DoctorSchedule entry exists
-    if not has_schedule:
+    if has_any_schedule:
+        # Check if all required hours are available in DoctorSchedule
+        schedule_entries = DoctorSchedule.query.filter_by(
+            doctor_id=doctor_id,
+            day_of_week=our_day_of_week,
+            is_available=True
+        ).filter(DoctorSchedule.hour.in_(hours_to_check)).all()
+        
+        available_hours = {entry.hour for entry in schedule_entries}
+        missing_hours = set(hours_to_check) - available_hours
+        
+        if len(missing_hours) > 0:
+            return False, f"Appointment spans hours not in doctor's schedule: {sorted(missing_hours)}"
+        # If all hours are available, validation passes for DoctorSchedule
+    else:
+        # No DoctorSchedule entries found - fall back to old working_days and working_hours JSON fields
         if not doctor.is_working_on_day(day_name):
             return False, f"Doctor doesn't work on {day_name}"
-    
-    # Check working hours
-    working_hours = doctor.get_working_hours()
-    start_hour = datetime.strptime(working_hours['start'], '%H:%M').time()
-    end_hour = datetime.strptime(working_hours['end'], '%H:%M').time()
-    
-    if start_time.time() < start_hour or end_time.time() > end_hour:
-        return False, "Appointment outside working hours"
+        
+        # Check working hours using old JSON field
+        working_hours = doctor.get_working_hours()
+        if not working_hours or not isinstance(working_hours, dict):
+            # Default working hours if not set
+            working_hours = {'start': '09:00', 'end': '17:00'}
+        
+        start_hour_str = working_hours.get('start', '09:00')
+        end_hour_str = working_hours.get('end', '17:00')
+        
+        try:
+            start_hour = datetime.strptime(start_hour_str, '%H:%M').time()
+            end_hour = datetime.strptime(end_hour_str, '%H:%M').time()
+        except (ValueError, TypeError):
+            # Default working hours if parsing fails
+            start_hour = datetime.strptime('09:00', '%H:%M').time()
+            end_hour = datetime.strptime('17:00', '%H:%M').time()
+        
+        # Check if appointment is within working hours
+        # Appointment can start at or after start_hour, and end at or before end_hour
+        if start_time.time() < start_hour or end_time.time() > end_hour:
+            return False, "Appointment outside working hours"
     
     # Check for conflicts with existing appointments
     conflicting_appointments = db.session.query(Appointment).filter(

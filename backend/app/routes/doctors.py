@@ -23,11 +23,21 @@ def get_doctors():
     search = request.args.get('search', '').strip()
     datetime_str = request.args.get('datetime')
     
-    query = Doctor.query
+    # Use joinedload to eagerly load clinic relationship
+    from sqlalchemy.orm import joinedload
+    query = Doctor.query.options(joinedload(Doctor.clinic))
     
     # Filter by clinic if provided
     if clinic_id:
         query = query.filter_by(clinic_id=clinic_id)
+    
+    # Filter by is_active if provided (for booking, only show active doctors)
+    is_active_param = request.args.get('is_active', type=str)
+    if is_active_param:
+        if is_active_param.lower() == 'true':
+            query = query.filter_by(is_active=True)
+        elif is_active_param.lower() == 'false':
+            query = query.filter_by(is_active=False)
     
     # Filter by specialty
     if specialty:
@@ -71,6 +81,8 @@ def get_doctors():
             hour = dt.hour
             
             for doctor in doctors:
+                # Access clinic to ensure it's loaded
+                _ = doctor.clinic
                 doctor_dict = doctor.to_dict(include_schedule=False)
                 # Check if doctor is available at this time
                 is_available = doctor.is_available_at(day_of_week, hour)
@@ -78,10 +90,18 @@ def get_doctors():
                 doctor_list.append(doctor_dict)
         except ValueError:
             # If datetime parsing fails, just return doctors without availability check
-            doctor_list = [doctor.to_dict(include_schedule=False) for doctor in doctors]
+            doctor_list = []
+            for doctor in doctors:
+                # Access clinic to ensure it's loaded
+                _ = doctor.clinic
+                doctor_dict = doctor.to_dict(include_schedule=False)
+                doctor_list.append(doctor_dict)
     else:
         # No datetime filter - check general availability
+        # Ensure clinic relationship is loaded for all doctors
         for doctor in doctors:
+            # Access clinic to ensure it's loaded (this will trigger lazy loading if needed)
+            _ = doctor.clinic
             doctor_dict = doctor.to_dict(include_schedule=False)
             doctor_schedules = schedules_by_doctor.get(doctor.id, [])
             has_availability = any(s.is_available for s in doctor_schedules)
@@ -134,7 +154,8 @@ def create_doctor(data, current_user):
         working_hours=data['working_hours'],
         clinic_id=data['clinic_id'],
         share_percentage=data.get('share_percentage', 0.7),
-        user_id=user_id
+        user_id=user_id,
+        is_active=data.get('is_active', True)
     )
     
     db.session.add(doctor)
@@ -174,7 +195,7 @@ def create_doctor(data, current_user):
 @receptionist_required
 @log_audit('update_doctor', 'doctor')
 def update_doctor(doctor_id, current_user):
-    """Update doctor information (receptionists can update schedules, admin can update all fields)"""
+    """Update doctor information (receptionists can update schedules and basic info, admin can update all fields)"""
     from app.models.doctor_schedule import DoctorSchedule
     
     doctor = Doctor.query.get_or_404(doctor_id)
@@ -227,6 +248,11 @@ def update_doctor(doctor_id, current_user):
             else:
                 # Receptionists cannot change user_id
                 return jsonify({'message': 'Only admin can change user_id'}), 403
+    # Only admin can change is_active status (for soft delete)
+    if 'is_active' in data:
+        if is_admin:
+            doctor.is_active = data['is_active']
+        # Receptionists cannot change is_active, silently ignore
     
     # Update schedule if provided
     if 'schedule' in data and data['schedule'] is not None:
@@ -266,17 +292,78 @@ def update_doctor(doctor_id, current_user):
 @admin_required
 @log_audit('delete_doctor', 'doctor')
 def delete_doctor(doctor_id, current_user):
-    """Delete doctor"""
+    """Hard delete doctor and all related data"""
+    from app.models.visit import Visit
+    from app.models.payment import Payment
+    from app.models.user import User
+    from app.models.patient import Patient
+    
     doctor = Doctor.query.get_or_404(doctor_id)
     
-    # Check if doctor has any appointments or visits
-    if doctor.appointments.count() > 0 or doctor.visits.count() > 0:
-        return jsonify({'message': 'Cannot delete doctor with existing appointments or visits'}), 400
-    
-    db.session.delete(doctor)
-    db.session.commit()
-    
-    return jsonify({'message': 'Doctor deleted successfully'}), 200
+    try:
+        # Get all visits for this doctor first (before deleting anything)
+        visits = Visit.query.filter_by(doctor_id=doctor_id).all()
+        visit_ids = [visit.id for visit in visits]
+        
+        # Nullify appointment_id in visits before deleting appointments (visits reference appointments)
+        if visit_ids:
+            Visit.query.filter(Visit.id.in_(visit_ids)).update({'appointment_id': None}, synchronize_session=False)
+        
+        # Delete prescriptions for visits of this doctor (prescriptions reference visit_id, must be deleted before visits)
+        if visit_ids:
+            Prescription.query.filter(Prescription.visit_id.in_(visit_ids)).delete(synchronize_session=False)
+        
+        # Delete payments for visits of this doctor
+        if visit_ids:
+            Payment.query.filter(Payment.visit_id.in_(visit_ids)).delete(synchronize_session=False)
+        
+        # Delete visits for this doctor
+        for visit in visits:
+            db.session.delete(visit)
+        
+        # Delete all appointments for this doctor (after visits are deleted)
+        appointments = Appointment.query.filter_by(doctor_id=doctor_id).all()
+        for appointment in appointments:
+            db.session.delete(appointment)
+        
+        # Delete all doctor schedules
+        DoctorSchedule.query.filter_by(doctor_id=doctor_id).delete()
+        
+        # Delete doctor's user account if exists (only if no other doctors use it and no other appointments reference it)
+        if doctor.user_id:
+            # Check if this user is only used by this doctor
+            other_doctors_with_user = Doctor.query.filter(
+                Doctor.user_id == doctor.user_id,
+                Doctor.id != doctor_id
+            ).count()
+            
+            # Check if any remaining appointments were created by this user
+            # (we've already deleted all appointments for this doctor, so any remaining would be for other doctors)
+            remaining_appointments_by_user = Appointment.query.filter_by(created_by=doctor.user_id).count()
+            
+            if other_doctors_with_user == 0 and remaining_appointments_by_user == 0:
+                user = User.query.get(doctor.user_id)
+                if user:
+                    db.session.delete(user)
+        
+        # Clear doctor_id from patients (set to NULL)
+        Patient.query.filter_by(doctor_id=doctor_id).update({'doctor_id': None})
+        
+        # Finally delete the doctor
+        db.session.delete(doctor)
+        db.session.commit()
+        
+        return jsonify({'message': 'Doctor and all related data deleted successfully'}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        from flask import current_app
+        error_response = {'message': f'Error deleting doctor: {str(e)}'}
+        # Only include traceback in debug mode for security
+        if current_app.config.get('DEBUG'):
+            import traceback
+            error_response['detail'] = traceback.format_exc()
+        return jsonify(error_response), 500
 
 @doctors_bp.route('/<int:doctor_id>/schedule', methods=['GET'])
 @jwt_required()
@@ -347,6 +434,34 @@ def update_doctor_schedule(doctor_id, current_user):
     
     return jsonify({
         'message': 'Doctor schedule updated successfully',
+        'doctor': doctor.to_dict()
+    }), 200
+
+@doctors_bp.route('/<int:doctor_id>/activate', methods=['POST'])
+@admin_required
+@log_audit('activate_doctor', 'doctor')
+def activate_doctor(doctor_id, current_user):
+    """Activate (soft un-delete) a doctor"""
+    doctor = Doctor.query.get_or_404(doctor_id)
+    doctor.is_active = True
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Doctor activated successfully',
+        'doctor': doctor.to_dict()
+    }), 200
+
+@doctors_bp.route('/<int:doctor_id>/deactivate', methods=['POST'])
+@admin_required
+@log_audit('deactivate_doctor', 'doctor')
+def deactivate_doctor(doctor_id, current_user):
+    """Deactivate (soft delete) a doctor"""
+    doctor = Doctor.query.get_or_404(doctor_id)
+    doctor.is_active = False
+    db.session.commit()
+    
+    return jsonify({
+        'message': 'Doctor deactivated successfully',
         'doctor': doctor.to_dict()
     }), 200
 

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { appointmentsApi } from '../api/appointments'
+import { useSocket } from '../hooks/useSocket'
 import { Card, CardHeader, CardTitle, CardContent } from '../components/common/Card'
 import Button from '../components/common/Button'
 import { Spinner } from '../components/common/Spinner'
@@ -27,6 +28,7 @@ const CurrentAppointmentPage = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [notes, setNotes] = useState('')
+  const { socket } = useSocket()
 
   // Fetch current appointment
   const { data, isLoading, error, refetch } = useQuery({
@@ -61,6 +63,30 @@ const CurrentAppointmentPage = () => {
     window.addEventListener('focus', handleFocus)
     return () => window.removeEventListener('focus', handleFocus)
   }, [refetch])
+
+  // Listen for current_appointment_available event
+  useEffect(() => {
+    if (!socket || !user || user.role !== 'doctor') return
+
+    const handleCurrentAppointmentAvailable = (data) => {
+      // Check if this is for the current doctor
+      if (data.doctor_user_id && data.doctor_user_id === user.id) {
+        // If navigate flag is set and we're not already on this page, redirect
+        if (data.navigate && window.location.pathname !== '/doctor/current-appointment') {
+          navigate('/doctor/current-appointment')
+        } else {
+          // Otherwise, just refresh the appointment data
+          refetch()
+        }
+      }
+    }
+
+    socket.on('current_appointment_available', handleCurrentAppointmentAvailable)
+
+    return () => {
+      socket.off('current_appointment_available', handleCurrentAppointmentAvailable)
+    }
+  }, [socket, refetch, navigate, user])
 
   if (isLoading) {
     return (

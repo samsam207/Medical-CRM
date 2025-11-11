@@ -20,8 +20,8 @@ export const clinicsApi = {
   },
 
   // Get doctors for a clinic
-  getClinicDoctors: async (clinicId) => {
-    const response = await api.get(`/clinics/${clinicId}/doctors`)
+  getClinicDoctors: async (clinicId, params = {}) => {
+    const response = await api.get(`/clinics/${clinicId}/doctors`, { params })
     return response.data
   },
 
@@ -58,6 +58,18 @@ export const clinicsApi = {
   // Delete clinic (admin only)
   deleteClinic: async (id) => {
     const response = await api.delete(`/clinics/${id}`)
+    return response.data
+  },
+
+  // Activate clinic (admin only)
+  activateClinic: async (id) => {
+    const response = await api.post(`/clinics/${id}/activate`)
+    return response.data
+  },
+
+  // Deactivate clinic (admin only)
+  deactivateClinic: async (id) => {
+    const response = await api.post(`/clinics/${id}/deactivate`)
     return response.data
   },
 

@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { clinicsApi, doctorsApi } from '../api'
 import { Button, Badge } from '../ui-kit'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui-kit'
@@ -20,6 +21,7 @@ import {
 } from '../ui-kit'
 import { Input, Label } from '../ui-kit'
 import { Skeleton } from '../ui-kit'
+import { Spinner } from '../components/common/Spinner'
 import ClinicFormModal from '../components/ClinicFormModal'
 import DoctorFormModal from '../components/DoctorFormModal'
 import ServiceFormModal from '../components/ServiceFormModal'
@@ -28,14 +30,19 @@ import PageContainer from '../components/layout/PageContainer'
 import StatCard from '../components/dashboard/StatCard'
 import { 
   Building2, Plus, Edit, Trash2, Stethoscope, 
-  Search, Filter, Eye, TrendingUp, Activity, Settings, ChevronDown, ChevronUp
+  Search, Filter, Eye, TrendingUp, Activity, Settings, ChevronDown, ChevronUp,
+  Power, PowerOff
 } from 'lucide-react'
 import { useMutationWithRefetch } from '../hooks/useMutationWithRefetch'
 import { useDoctorFilters } from '../hooks/useDoctorFilters'
+import { useAuthStore } from '../stores/authStore'
 
 const ClinicsAndDoctorsPage = () => {
   const { clinicId, isDoctor, addFilters } = useDoctorFilters()
+  const { user } = useAuthStore()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const isAdmin = user?.role === 'admin'
   const [showClinicModal, setShowClinicModal] = useState(false)
   const [showDoctorModal, setShowDoctorModal] = useState(false)
   const [showServiceModal, setShowServiceModal] = useState(false)
@@ -258,13 +265,34 @@ const ClinicsAndDoctorsPage = () => {
     onSuccessCallback: async (response, variables) => {
       setShowDoctorModal(false)
       setSelectedDoctor(null)
+      
+      // Check if a new user was created and navigate to users management page
+      if (variables.create_user) {
+        // Small delay to ensure success message is shown
+        setTimeout(() => {
+          navigate('/reception/users-management')
+        }, 500)
+        return
+      }
+      
       const clinicId = variables.clinic_id
-      const services = await fetchClinicServices(clinicId)
-      if (services.length === 0) {
-        const clinic = clinics.find(c => c.id === clinicId)
-        if (clinic && window.confirm(`لم يتم العثور على خدمات لـ ${clinic.name}. هل تريد إضافة خدمات الآن؟`)) {
-          setSelectedClinicForService(clinic)
-          setShowServiceModal(true)
+      if (clinicId) {
+        const services = await fetchClinicServices(clinicId)
+        if (services.length === 0) {
+          // Try to find clinic in current list, or fetch it
+          let clinic = clinics.find(c => c.id === clinicId)
+          if (!clinic) {
+            try {
+              const clinicResponse = await clinicsApi.getClinic(clinicId)
+              clinic = clinicResponse?.clinic
+            } catch (error) {
+              console.error('Error fetching clinic:', error)
+            }
+          }
+          if (clinic && window.confirm(`لم يتم العثور على خدمات لـ ${clinic.name}. هل تريد إضافة خدمات الآن؟`)) {
+            setSelectedClinicForService(clinic)
+            setShowServiceModal(true)
+          }
         }
       }
     }
@@ -290,6 +318,35 @@ const ClinicsAndDoctorsPage = () => {
       setShowDeleteDoctorModal(false)
       setSelectedDoctor(null)
     }
+  })
+
+  // Activate/Deactivate mutations
+  const activateClinicMutation = useMutationWithRefetch({
+    mutationFn: (id) => clinicsApi.activateClinic(id),
+    queryKeys: [['clinics-all'], ['clinics'], ['clinic-statistics']],
+    onSuccessMessage: 'تم تفعيل العيادة بنجاح',
+    onErrorMessage: 'فشل تفعيل العيادة'
+  })
+
+  const deactivateClinicMutation = useMutationWithRefetch({
+    mutationFn: (id) => clinicsApi.deactivateClinic(id),
+    queryKeys: [['clinics-all'], ['clinics'], ['clinic-statistics']],
+    onSuccessMessage: 'تم إلغاء تفعيل العيادة بنجاح',
+    onErrorMessage: 'فشل إلغاء تفعيل العيادة'
+  })
+
+  const activateDoctorMutation = useMutationWithRefetch({
+    mutationFn: (id) => doctorsApi.activateDoctor(id),
+    queryKeys: [['doctors-all'], ['doctors'], ['doctor-statistics']],
+    onSuccessMessage: 'تم تفعيل الطبيب بنجاح',
+    onErrorMessage: 'فشل تفعيل الطبيب'
+  })
+
+  const deactivateDoctorMutation = useMutationWithRefetch({
+    mutationFn: (id) => doctorsApi.deactivateDoctor(id),
+    queryKeys: [['doctors-all'], ['doctors'], ['doctor-statistics']],
+    onSuccessMessage: 'تم إلغاء تفعيل الطبيب بنجاح',
+    onErrorMessage: 'فشل إلغاء تفعيل الطبيب'
   })
 
   const handleSaveClinic = (data) => {
@@ -359,7 +416,16 @@ const ClinicsAndDoctorsPage = () => {
     }
   }
 
-  const getClinicName = (clinicId) => {
+  const getClinicName = (doctor) => {
+    // Try to get clinic name from doctor object first (if clinic is included in response)
+    if (doctor?.clinic_name) {
+      return doctor.clinic_name
+    }
+    if (doctor?.clinic?.name) {
+      return doctor.clinic.name
+    }
+    // Fallback to finding clinic in clinics list
+    const clinicId = doctor?.clinic_id || doctor
     const clinic = clinics.find(c => c.id === clinicId)
     return clinic ? clinic.name : 'غير معروف'
   }
@@ -439,7 +505,7 @@ const ClinicsAndDoctorsPage = () => {
                 <Building2 className="w-5 h-5 text-medical-blue-500" aria-hidden="true" />
                 العيادات ({clinics.length})
               </CardTitle>
-              {!isDoctor && (
+              {isAdmin && (
                 <Button
                   onClick={() => {
                     setSelectedClinic(null)
@@ -505,13 +571,17 @@ const ClinicsAndDoctorsPage = () => {
                     key={clinic.id}
                     clinic={clinic}
                     onEdit={isDoctor ? undefined : () => handleEditClinic(clinic)}
-                    onDelete={isDoctor ? undefined : () => handleDeleteClinic(clinic)}
+                    onDelete={isAdmin ? () => handleDeleteClinic(clinic) : undefined}
+                    onActivate={isAdmin && !clinic.is_active ? () => activateClinicMutation.mutate(clinic.id) : undefined}
+                    onDeactivate={isAdmin && clinic.is_active ? () => deactivateClinicMutation.mutate(clinic.id) : undefined}
                     onAddService={isDoctor ? undefined : () => handleAddService(clinic)}
                     onEditService={isDoctor ? undefined : (service) => handleEditService(clinic, service)}
                     onDeleteService={isDoctor ? undefined : (service) => handleDeleteService(clinic, service)}
                     isExpanded={expandedClinicId === clinic.id}
                     onToggleExpand={() => setExpandedClinicId(expandedClinicId === clinic.id ? null : clinic.id)}
                     queryClient={queryClient}
+                    activateClinicMutation={activateClinicMutation}
+                    deactivateClinicMutation={deactivateClinicMutation}
                   />
                 ))}
               </div>
@@ -527,7 +597,7 @@ const ClinicsAndDoctorsPage = () => {
                 <Stethoscope className="w-5 h-5 text-medical-green-500" aria-hidden="true" />
                 الأطباء ({doctors.length})
               </CardTitle>
-              {!isDoctor && (
+              {isAdmin && (
                 <Button
                   onClick={() => {
                     setSelectedDoctor(null)
@@ -617,7 +687,7 @@ const ClinicsAndDoctorsPage = () => {
                         <div className="flex-1">
                           <h3 className="font-bold text-base text-gray-900 mb-1 font-arabic">{doctor.name}</h3>
                           <p className="text-sm font-medium text-gray-600 mb-1 font-arabic">{doctor.specialty}</p>
-                          <p className="text-xs font-medium text-gray-500 font-arabic">{getClinicName(doctor.clinic_id)}</p>
+                          <p className="text-xs font-medium text-gray-500 font-arabic">{getClinicName(doctor)}</p>
                         </div>
                         <div className="flex gap-1">
                           <Button
@@ -630,16 +700,51 @@ const ClinicsAndDoctorsPage = () => {
                             <Eye className="w-4 h-4" aria-hidden="true" />
                           </Button>
                           {!isDoctor && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditDoctor(doctor)}
+                              className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              aria-label={`تعديل ${doctor.name}`}
+                            >
+                              <Edit className="w-4 h-4" aria-hidden="true" />
+                            </Button>
+                          )}
+                          {isAdmin && (
                             <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEditDoctor(doctor)}
-                                className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                aria-label={`تعديل ${doctor.name}`}
-                              >
-                                <Edit className="w-4 h-4" aria-hidden="true" />
-                              </Button>
+                              {!doctor.is_active ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => activateDoctorMutation.mutate(doctor.id)}
+                                  disabled={activateDoctorMutation.isPending}
+                                  className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50 disabled:opacity-50"
+                                  aria-label={`تفعيل ${doctor.name}`}
+                                  title="تفعيل"
+                                >
+                                  {activateDoctorMutation.isPending ? (
+                                    <Spinner size="sm" />
+                                  ) : (
+                                    <Power className="w-4 h-4" aria-hidden="true" />
+                                  )}
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deactivateDoctorMutation.mutate(doctor.id)}
+                                  disabled={deactivateDoctorMutation.isPending}
+                                  className="h-8 w-8 p-0 text-orange-600 hover:text-orange-700 hover:bg-orange-50 disabled:opacity-50"
+                                  aria-label={`إلغاء تفعيل ${doctor.name}`}
+                                  title="إلغاء التفعيل"
+                                >
+                                  {deactivateDoctorMutation.isPending ? (
+                                    <Spinner size="sm" />
+                                  ) : (
+                                    <PowerOff className="w-4 h-4" aria-hidden="true" />
+                                  )}
+                                </Button>
+                              )}
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -708,10 +813,24 @@ const ClinicsAndDoctorsPage = () => {
           
           <div className="space-y-4">
             <p className="text-gray-700 font-arabic">
-              هل أنت متأكد من رغبتك في حذف <strong>{selectedClinic?.name}</strong>؟
+              هل أنت متأكد من رغبتك في حذف <strong>{selectedClinic?.name}</strong> نهائياً؟
             </p>
-            <p className="text-sm text-gray-500 font-arabic">
-              لا يمكن التراجع عن هذا الإجراء. لا يمكن حذف العيادة إذا كانت تحتوي على أطباء أو خدمات أو مواعيد موجودة.
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-sm font-semibold text-red-800 font-arabic mb-2">
+                ⚠️ تحذير: هذا الإجراء سيقوم بحذف:
+              </p>
+              <ul className="text-sm text-red-700 font-arabic space-y-1 list-disc list-inside">
+                <li>العيادة نفسها</li>
+                <li>جميع الأطباء المرتبطين بهذه العيادة</li>
+                <li>جميع الخدمات المرتبطة بهذه العيادة</li>
+                <li>جميع المواعيد المرتبطة بهذه العيادة</li>
+                <li>جميع الزيارات المرتبطة بهذه العيادة</li>
+                <li>حسابات المستخدمين للأطباء المرتبطين</li>
+                <li>جميع الجداول الزمنية والوصفات الطبية</li>
+              </ul>
+            </div>
+            <p className="text-sm text-red-600 font-arabic font-semibold">
+              لا يمكن التراجع عن هذا الإجراء! هذا حذف نهائي.
             </p>
           </div>
           
@@ -749,10 +868,23 @@ const ClinicsAndDoctorsPage = () => {
           
           <div className="space-y-4">
             <p className="text-gray-700 font-arabic">
-              هل أنت متأكد من رغبتك في حذف <strong>{selectedDoctor?.name}</strong>؟
+              هل أنت متأكد من رغبتك في حذف <strong>{selectedDoctor?.name}</strong> نهائياً؟
             </p>
-            <p className="text-sm text-gray-500 font-arabic">
-              لا يمكن التراجع عن هذا الإجراء. لا يمكن حذف الطبيب إذا كان لديه مواعيد أو زيارات موجودة.
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <p className="text-sm font-semibold text-red-800 font-arabic mb-2">
+                ⚠️ تحذير: هذا الإجراء سيقوم بحذف:
+              </p>
+              <ul className="text-sm text-red-700 font-arabic space-y-1 list-disc list-inside">
+                <li>الطبيب نفسه</li>
+                <li>جميع المواعيد المرتبطة بهذا الطبيب</li>
+                <li>جميع الزيارات المرتبطة بهذا الطبيب</li>
+                <li>جميع الوصفات الطبية المرتبطة بهذا الطبيب</li>
+                <li>حساب المستخدم الخاص بالطبيب (إن وجد)</li>
+                <li>جميع الجداول الزمنية للطبيب</li>
+              </ul>
+            </div>
+            <p className="text-sm text-red-600 font-arabic font-semibold">
+              لا يمكن التراجع عن هذا الإجراء! هذا حذف نهائي.
             </p>
           </div>
           
@@ -843,7 +975,7 @@ const ClinicsAndDoctorsPage = () => {
                 </div>
                 <div>
                   <Label className="text-sm text-gray-500 font-arabic mb-1">العيادة</Label>
-                  <p className="text-base font-semibold text-gray-900 font-arabic">{getClinicName(selectedDoctorForView.clinic_id)}</p>
+                  <p className="text-base font-semibold text-gray-900 font-arabic">{getClinicName(selectedDoctorForView)}</p>
                 </div>
                 <div>
                   <Label className="text-sm text-gray-500 font-arabic mb-1">نسبة الحصة</Label>
@@ -892,9 +1024,11 @@ const ClinicsAndDoctorsPage = () => {
 }
 
 // Clinic Card Component
-const ClinicCard = ({ clinic, onEdit, onDelete, onAddService, onEditService, onDeleteService, isExpanded, onToggleExpand, queryClient }) => {
-  const { useQuery } = require('@tanstack/react-query')
-  const { clinicsApi } = require('../api')
+const ClinicCard = ({ clinic, onEdit, onDelete, onActivate, onDeactivate, onAddService, onEditService, onDeleteService, isExpanded, onToggleExpand, queryClient, activateClinicMutation, deactivateClinicMutation }) => {
+  // Provide default values to prevent undefined errors
+  const activateMutation = activateClinicMutation || { isPending: false }
+  const deactivateMutation = deactivateClinicMutation || { isPending: false }
+  // useQuery and clinicsApi are already imported at the top of the file
 
   const { data: services = [], isLoading: servicesLoading } = useQuery({
     queryKey: ['services', clinic.id],
@@ -945,6 +1079,40 @@ const ClinicCard = ({ clinic, onEdit, onDelete, onAddService, onEditService, onD
                 aria-label={`تعديل ${clinic.name}`}
               >
                 <Edit className="w-4 h-4" aria-hidden="true" />
+              </Button>
+            )}
+            {onDeactivate && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onDeactivate}
+                disabled={deactivateMutation.isPending}
+                className="h-8 w-8 p-0 text-orange-600 hover:text-orange-700 hover:bg-orange-50 disabled:opacity-50"
+                aria-label={`إلغاء تفعيل ${clinic.name}`}
+                title="إلغاء التفعيل"
+              >
+                {deactivateMutation.isPending ? (
+                  <Spinner size="sm" />
+                ) : (
+                  <PowerOff className="w-4 h-4" aria-hidden="true" />
+                )}
+              </Button>
+            )}
+            {onActivate && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onActivate}
+                disabled={activateMutation.isPending}
+                className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50 disabled:opacity-50"
+                aria-label={`تفعيل ${clinic.name}`}
+                title="تفعيل"
+              >
+                {activateMutation.isPending ? (
+                  <Spinner size="sm" />
+                ) : (
+                  <Power className="w-4 h-4" aria-hidden="true" />
+                )}
               </Button>
             )}
             {onDelete && (

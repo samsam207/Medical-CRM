@@ -47,8 +47,8 @@ export const paymentsApi = {
   },
 
   // Get payment statistics
-  getStatistics: async () => {
-    const response = await api.get('/payments/statistics')
+  getStatistics: async (params = {}) => {
+    const response = await api.get('/payments/statistics', { params })
     return response.data
   }
 }

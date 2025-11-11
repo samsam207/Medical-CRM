@@ -20,7 +20,10 @@ def upgrade():
     # Add indexes for frequently queried columns
     
     # Appointments indexes
-    op.create_index('idx_appointments_clinic_id', 'appointments', ['clinic_id'])
+    try:
+        op.create_index('idx_appointments_clinic_id', 'appointments', ['clinic_id'])
+    except Exception:
+        pass  # Index already exists
     op.create_index('idx_appointments_doctor_id', 'appointments', ['doctor_id'])
     op.create_index('idx_appointments_patient_id', 'appointments', ['patient_id'])
     op.create_index('idx_appointments_start_time', 'appointments', ['start_time'])

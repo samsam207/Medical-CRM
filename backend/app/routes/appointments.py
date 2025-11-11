@@ -451,12 +451,66 @@ def create_appointment(data, current_user):
         return jsonify({'message': f'Failed to create appointment: {str(e)}'}), 500
 
 @appointments_bp.route('/<int:appointment_id>', methods=['PUT'])
-@receptionist_required
+@jwt_required()
 @log_audit('update_appointment', 'appointment')
-def update_appointment(appointment_id, current_user):
+def update_appointment(appointment_id):
     """Update appointment"""
+    from flask_jwt_extended import get_jwt_identity
+    from app.models.user import User, UserRole
+    
+    current_user_id = int(get_jwt_identity())
+    current_user = User.query.get(current_user_id)
+    
+    if not current_user:
+        return jsonify({'message': 'User not found'}), 401
+    
+    # Allow receptionist, admin, and doctor roles
+    if current_user.role not in [UserRole.RECEPTIONIST, UserRole.ADMIN, UserRole.DOCTOR]:
+        return jsonify({'message': 'Insufficient permissions'}), 403
+    
     appointment = Appointment.query.get_or_404(appointment_id)
     data = request.get_json()
+    
+    # Check if user is trying to change status to completed
+    is_receptionist = current_user.role in [UserRole.RECEPTIONIST, UserRole.ADMIN]
+    is_doctor = current_user.role == UserRole.DOCTOR
+    
+    # Track if status changed and what the new status is
+    status_changed = False
+    old_status = appointment.status
+    new_status = None
+    
+    if 'status' in data:
+        try:
+            # Handle both uppercase and lowercase status values
+            status_lower = data['status'].lower()
+            new_status = AppointmentStatus(status_lower)
+            
+            # Date validation: Only allow status changes (except cancel) if appointment date is today
+            appointment_date = appointment.start_time.date() if appointment.start_time else None
+            today = datetime.now().date()
+            
+            # Allow canceling any day, but restrict other status changes to today
+            if new_status != AppointmentStatus.CANCELLED:
+                if not appointment_date or appointment_date != today:
+                    return jsonify({'message': 'Status can only be changed for today\'s appointments. Exception: Cancellation can be done any day.'}), 400
+            
+            # Prevent Reception from changing status to completed (only Doctor can)
+            if new_status == AppointmentStatus.COMPLETED and is_receptionist:
+                return jsonify({'message': 'Receptionists cannot complete appointments. Only doctors can complete consultations.'}), 403
+            
+            # If Doctor is changing status to completed, verify it's their appointment
+            if new_status == AppointmentStatus.COMPLETED and is_doctor:
+                doctor = Doctor.query.filter_by(user_id=current_user.id).first()
+                if not doctor:
+                    return jsonify({'message': 'Doctor profile not found for this user'}), 404
+                if appointment.doctor_id != doctor.id:
+                    return jsonify({'message': 'You can only complete your own appointments'}), 403
+            
+            status_changed = (old_status != new_status)
+            appointment.status = new_status
+        except ValueError:
+            return jsonify({'message': f'Invalid status: {data["status"]}. Valid values: {[s.value for s in AppointmentStatus]}'}), 400
     
     # Update fields if provided
     if 'start_time' in data:
@@ -476,16 +530,123 @@ def update_appointment(appointment_id, current_user):
         appointment.start_time = start_time
         appointment.end_time = end_time
     
-    if 'status' in data:
-        try:
-            # Handle both uppercase and lowercase status values
-            status_lower = data['status'].lower()
-            appointment.status = AppointmentStatus(status_lower)
-        except ValueError:
-            return jsonify({'message': f'Invalid status: {data["status"]}. Valid values: {[s.value for s in AppointmentStatus]}'}), 400
-    
     if 'notes' in data:
         appointment.notes = data['notes']
+    
+    # Handle status changes and synchronize with queue
+    visit = None
+    if status_changed and new_status:
+        from app.services.queue_service import QueueService
+        queue_service = QueueService()
+        
+        # Handle cancellation
+        if new_status == AppointmentStatus.CANCELLED:
+            appointment_date = appointment.start_time.date() if appointment.start_time else None
+            today = datetime.now().date()
+            
+            # If same day, delete visit and remove from queue
+            if appointment_date == today:
+                visit = Visit.query.filter_by(appointment_id=appointment_id).first()
+                if visit:
+                    # Delete prescriptions for this visit
+                    from app.models.prescription import Prescription
+                    Prescription.query.filter_by(visit_id=visit.id).delete(synchronize_session=False)
+                    
+                    # Delete payments for this visit
+                    Payment.query.filter_by(visit_id=visit.id).delete(synchronize_session=False)
+                    
+                    # Delete the visit
+                    db.session.delete(visit)
+                    db.session.flush()
+            
+            # If different day, just update status (visit and queue remain unchanged)
+        
+        # Handle CHECKED_IN status - create/update visit and move to waiting phase
+        elif new_status == AppointmentStatus.CHECKED_IN:
+            visit = Visit.query.filter_by(appointment_id=appointment_id).first()
+            if not visit:
+                # Create visit if it doesn't exist
+                queue_number = queue_service.get_next_queue_number(appointment.clinic_id)
+                visit = Visit(
+                    appointment_id=appointment.id,
+                    doctor_id=appointment.doctor_id,
+                    patient_id=appointment.patient_id,
+                    service_id=appointment.service_id,
+                    clinic_id=appointment.clinic_id,
+                    check_in_time=datetime.utcnow(),
+                    visit_type=VisitType.SCHEDULED,
+                    queue_number=queue_number,
+                    status=VisitStatus.WAITING
+                )
+                db.session.add(visit)
+                db.session.flush()  # Flush to get visit.id
+                
+                # Create payment for the visit if it doesn't exist
+                payment = Payment.query.filter_by(visit_id=visit.id).first()
+                if not payment:
+                    doctor = Doctor.query.get(appointment.doctor_id)
+                    if not doctor:
+                        return jsonify({'message': 'Doctor not found'}), 404
+                    
+                    service = Service.query.get(appointment.service_id)
+                    if not service:
+                        return jsonify({'message': 'Service not found'}), 404
+                    
+                    doctor_share = float(service.price) * doctor.share_percentage
+                    center_share = float(service.price) - doctor_share
+                    
+                    payment = Payment(
+                        visit_id=visit.id,
+                        patient_id=appointment.patient_id,
+                        total_amount=float(service.price),
+                        amount_paid=0.0,
+                        payment_method=PaymentMethod.CASH,
+                        doctor_share=doctor_share,
+                        center_share=center_share,
+                        status=PaymentStatus.PENDING
+                    )
+                    db.session.add(payment)
+            else:
+                # Update existing visit to waiting
+                visit.status = VisitStatus.WAITING
+                if not visit.check_in_time:
+                    visit.check_in_time = datetime.utcnow()
+            
+            db.session.flush()
+        
+        # Handle COMPLETED status - update visit and move to completed phase
+        elif new_status == AppointmentStatus.COMPLETED and is_doctor:
+            visit = Visit.query.filter_by(appointment_id=appointment_id).first()
+            if not visit:
+                # Create visit if it doesn't exist
+                queue_number = queue_service.get_next_queue_number(appointment.clinic_id)
+                visit = Visit(
+                    appointment_id=appointment.id,
+                    doctor_id=appointment.doctor_id,
+                    patient_id=appointment.patient_id,
+                    service_id=appointment.service_id,
+                    clinic_id=appointment.clinic_id,
+                    check_in_time=datetime.utcnow(),
+                    start_time=datetime.utcnow(),
+                    end_time=datetime.utcnow(),
+                    visit_type=VisitType.SCHEDULED,
+                    queue_number=queue_number,
+                    status=VisitStatus.COMPLETED
+                )
+                db.session.add(visit)
+            else:
+                # Update existing visit to completed
+                visit.status = VisitStatus.COMPLETED
+                if not visit.end_time:
+                    visit.end_time = datetime.utcnow()
+            
+            # Update payment status to "appointment completed waiting for payment"
+            if visit:
+                payment = Payment.query.filter_by(visit_id=visit.id).first()
+                if payment:
+                    payment.status = PaymentStatus.APPOINTMENT_COMPLETED
+            
+            db.session.flush()
     
     db.session.commit()
     
@@ -501,6 +662,68 @@ def update_appointment(appointment_id, current_user):
     }
     socketio.emit('appointment_updated', appointment_data, room=f'clinic_{appointment.clinic_id}')
     socketio.emit('appointment_updated', appointment_data, room=f'doctor_{appointment.doctor_id}')
+    
+    # If status changed, emit queue phase updates
+    if status_changed and new_status:
+        appointment_date = appointment.start_time.date() if appointment.start_time else datetime.now().date()
+        queue_service = QueueService()
+        phases_data = queue_service.get_all_appointments_for_date(appointment_date, appointment.clinic_id)
+        
+        # Organize into phases
+        phases = {
+            'appointments_today': [],
+            'waiting': [],
+            'with_doctor': [],
+            'completed': []
+        }
+        for apt in phases_data:
+            queue_phase = apt.get('queue_phase', 'appointments_today')
+            if queue_phase in phases:
+                phases[queue_phase].append(apt)
+        
+        # Emit phases_updated event
+        socketio.emit('phases_updated', {
+            'phases': phases,
+            'date': appointment_date.isoformat(),
+            'clinic_id': appointment.clinic_id
+        }, room=f'clinic_{appointment.clinic_id}')
+        
+        # Emit to doctor's room if applicable
+        if appointment.doctor_id:
+            socketio.emit('phases_updated', {
+                'phases': phases,
+                'date': appointment_date.isoformat(),
+                'clinic_id': appointment.clinic_id,
+                'doctor_id': appointment.doctor_id
+            }, room=f'doctor_{appointment.doctor_id}')
+        
+        # If status changed to completed, emit completion event
+        if new_status == AppointmentStatus.COMPLETED and visit:
+            socketio.emit('appointment_completed', {
+                'appointment': appointment.to_dict(),
+                'visit': visit.to_dict() if visit else None,
+                'clinic_id': appointment.clinic_id,
+                'doctor_id': appointment.doctor_id
+            }, room=f'clinic_{appointment.clinic_id}')
+            socketio.emit('appointment_completed', {
+                'appointment': appointment.to_dict(),
+                'visit': visit.to_dict() if visit else None,
+                'clinic_id': appointment.clinic_id,
+                'doctor_id': appointment.doctor_id
+            }, room=f'doctor_{appointment.doctor_id}')
+        
+        # If status changed to cancelled and same day, emit queue_updated to remove from queue
+        if new_status == AppointmentStatus.CANCELLED:
+            appointment_date = appointment.start_time.date() if appointment.start_time else None
+            today = datetime.now().date()
+            if appointment_date == today:
+                # Emit queue_updated to refresh queue
+                queue_data = queue_service.get_clinic_queue(appointment.clinic_id)
+                socketio.emit('queue_updated', queue_data, room=f'clinic_{appointment.clinic_id}')
+                
+                if appointment.doctor_id:
+                    doctor_queue_data = queue_service.get_doctor_queue(appointment.doctor_id)
+                    socketio.emit('queue_updated', doctor_queue_data, room=f'doctor_{appointment.doctor_id}')
     
     # Emit queue update for the clinic
     queue_service = QueueService()
@@ -584,6 +807,17 @@ def get_available_slots():
     doctor = Doctor.query.get(doctor_id)
     if not doctor:
         return jsonify({'message': 'Doctor not found'}), 404
+    
+    # Check if doctor is active
+    if not doctor.is_active:
+        return jsonify({'message': 'Doctor is not active'}), 400
+    
+    # Check clinic is active
+    clinic = Clinic.query.get(clinic_id)
+    if not clinic:
+        return jsonify({'message': 'Clinic not found'}), 404
+    if not clinic.is_active:
+        return jsonify({'message': 'Clinic is not active'}), 400
     
     if doctor.clinic_id != clinic_id:
         return jsonify({'message': 'Doctor not assigned to this clinic'}), 400

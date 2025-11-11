@@ -13,9 +13,11 @@ class Doctor(db.Model):
     working_hours = db.Column(db.JSON, nullable=False)  # {"start": "09:00", "end": "17:00"}
     clinic_id = db.Column(db.Integer, db.ForeignKey('clinics.id'), nullable=False)
     share_percentage = db.Column(db.Float, default=0.7, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Relationships
+    # Note: clinic relationship is defined via backref from Clinic model
     appointments = db.relationship('Appointment', backref='doctor', lazy='dynamic')
     visits = db.relationship('Visit', backref='doctor', lazy='dynamic')
     prescriptions = db.relationship('Prescription', back_populates='doctor', lazy='dynamic')
@@ -27,7 +29,7 @@ class Doctor(db.Model):
         db.Index('idx_doctor_user', 'user_id'),
     )
     
-    def __init__(self, name, specialty, working_days, working_hours, clinic_id, share_percentage=0.7, user_id=None):
+    def __init__(self, name, specialty, working_days, working_hours, clinic_id, share_percentage=0.7, user_id=None, is_active=True):
         self.name = name
         self.specialty = specialty
         self.working_days = working_days if isinstance(working_days, list) else json.loads(working_days)
@@ -35,6 +37,7 @@ class Doctor(db.Model):
         self.clinic_id = clinic_id
         self.share_percentage = share_percentage
         self.user_id = user_id
+        self.is_active = is_active
     
     def is_working_on_day(self, day_name):
         """Check if doctor works on specific day"""
@@ -100,8 +103,25 @@ class Doctor(db.Model):
             'working_hours': self.working_hours,
             'clinic_id': self.clinic_id,
             'share_percentage': self.share_percentage,
+            'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
+        
+        # Include clinic info if available
+        # Access clinic via backref (defined in Clinic model)
+        try:
+            # Try to access clinic relationship - it may not be loaded
+            clinic = getattr(self, 'clinic', None)
+            if clinic:
+                result['clinic'] = {
+                    'id': clinic.id,
+                    'name': clinic.name,
+                    'room_number': clinic.room_number
+                }
+                result['clinic_name'] = clinic.name
+        except Exception:
+            # Clinic relationship not loaded, just include clinic_id
+            pass
         
         # Only include schedule if explicitly requested (to avoid N+1 queries)
         if include_schedule:

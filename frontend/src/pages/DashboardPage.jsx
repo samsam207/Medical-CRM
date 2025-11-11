@@ -5,7 +5,7 @@
  * Preserves all API calls, data flow, and functionality.
  */
 
-import React, { useEffect } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { 
@@ -35,16 +35,36 @@ const DashboardPage = () => {
   // Get today's date
   const today = new Date().toISOString().split('T')[0]
   
+  // Calculate effective clinic ID
+  const effectiveClinicId = isDoctor ? clinicId : selectedClinic
+  
+  // Build filter params that include selected clinic for non-doctors
+  const filterParams = useMemo(() => {
+    const params = addFilters({})
+    if (!isDoctor && selectedClinic) {
+      params.clinic_id = selectedClinic
+    }
+    return params
+  }, [addFilters, isDoctor, selectedClinic])
+  
+  // Build filter params with date
+  const filterParamsWithDate = useMemo(() => {
+    const params = addFilters({ date: today })
+    if (!isDoctor && selectedClinic) {
+      params.clinic_id = selectedClinic
+    }
+    return params
+  }, [addFilters, isDoctor, selectedClinic, today])
+  
   // Fetch all statistics with doctor/clinic filters - optimized caching
   const { data: appointmentStats, isLoading: loadingAppointments } = useQuery({
-    queryKey: ['appointment-statistics', today, clinicId, isDoctor],
-    queryFn: () => appointmentsApi.getStatistics(addFilters({ date: today })),
+    queryKey: ['appointment-statistics', today, effectiveClinicId, isDoctor, filterParamsWithDate],
+    queryFn: () => appointmentsApi.getStatistics(filterParamsWithDate),
     refetchInterval: 30000,
     staleTime: 60 * 1000,
-    gcTime: 5 * 60 * 1000
+    gcTime: 5 * 60 * 1000,
+    enabled: !!effectiveClinicId || isDoctor
   })
-  
-  const effectiveClinicId = isDoctor ? clinicId : selectedClinic
   
   const { data: queueStats, isLoading: loadingQueue } = useQuery({
     queryKey: ['queue-statistics', effectiveClinicId, today],
@@ -56,35 +76,39 @@ const DashboardPage = () => {
   })
   
   const { data: patientStats, isLoading: loadingPatients } = useQuery({
-    queryKey: ['patient-statistics', clinicId, isDoctor],
-    queryFn: () => patientsApi.getStatistics(addFilters()),
+    queryKey: ['patient-statistics', effectiveClinicId, isDoctor, filterParams],
+    queryFn: () => patientsApi.getStatistics(filterParams),
     refetchInterval: 60000,
     staleTime: 3 * 60 * 1000,
-    gcTime: 10 * 60 * 1000
+    gcTime: 10 * 60 * 1000,
+    enabled: !!effectiveClinicId || isDoctor
   })
   
   const { data: paymentStats, isLoading: loadingPayments } = useQuery({
-    queryKey: ['payment-statistics', clinicId, isDoctor],
-    queryFn: () => paymentsApi.getStatistics(addFilters()),
+    queryKey: ['payment-statistics', effectiveClinicId, isDoctor, filterParams],
+    queryFn: () => paymentsApi.getStatistics(filterParams),
     refetchInterval: 30000,
     staleTime: 60 * 1000,
-    gcTime: 5 * 60 * 1000
+    gcTime: 5 * 60 * 1000,
+    enabled: !!effectiveClinicId || isDoctor
   })
   
   const { data: clinicStats, isLoading: loadingClinics } = useQuery({
-    queryKey: ['clinic-statistics', clinicId, isDoctor],
-    queryFn: () => clinicsApi.getStatistics(addFilters()),
+    queryKey: ['clinic-statistics', effectiveClinicId, isDoctor, filterParams],
+    queryFn: () => clinicsApi.getStatistics(filterParams),
     refetchInterval: 60000,
     staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000
+    gcTime: 15 * 60 * 1000,
+    enabled: !!effectiveClinicId || isDoctor
   })
   
   const { data: doctorStats, isLoading: loadingDoctors } = useQuery({
-    queryKey: ['doctor-statistics', clinicId, isDoctor],
-    queryFn: () => doctorsApi.getStatistics(addFilters()),
+    queryKey: ['doctor-statistics', effectiveClinicId, isDoctor, filterParams],
+    queryFn: () => doctorsApi.getStatistics(filterParams),
     refetchInterval: 60000,
     staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000
+    gcTime: 15 * 60 * 1000,
+    enabled: !!effectiveClinicId || isDoctor
   })
   
   const { data: clinicsData } = useQuery({
@@ -342,7 +366,7 @@ const DashboardPage = () => {
           />
           <StatCard
             title="إجمالي الإيرادات"
-            value={`${paymentStats?.total_revenue || 0} دينار`}
+            value={`${paymentStats?.total_revenue || 0} جنيه`}
             subtitle="إيرادات مدفوعة"
             icon={DollarSign}
             iconColor="green"
@@ -366,7 +390,7 @@ const DashboardPage = () => {
           />
           <StatCard
             title="مبلغ معلق"
-            value={`${paymentStats?.pending_amount || 0} دينار`}
+            value={`${paymentStats?.pending_amount || 0} جنيه`}
             subtitle="إجمالي المبلغ المعلق"
             icon={DollarSign}
             iconColor="red"

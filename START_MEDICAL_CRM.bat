@@ -18,9 +18,25 @@ if not exist "frontend\node_modules" (
     exit /b 1
 )
 
+echo Checking if port 5000 is available...
+netstat -ano | findstr :5000 >nul 2>&1
+if %errorlevel% equ 0 (
+    echo WARNING: Port 5000 is already in use. Attempting to free it...
+    for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5000 ^| findstr LISTENING') do (
+        echo Killing process %%a...
+        taskkill /F /PID %%a >nul 2>&1
+    )
+    timeout /t 2 /nobreak >nul
+)
+
 echo Starting backend server...
 cd backend
-start "Medical CRM Backend" cmd /k "venv\Scripts\activate.bat && py run.py"
+:: Try to use Python from venv, fallback to py launcher
+if exist "venv\Scripts\python.exe" (
+    start "Medical CRM Backend" cmd /k "venv\Scripts\activate.bat && venv\Scripts\python.exe run.py"
+) else (
+    start "Medical CRM Backend" cmd /k "venv\Scripts\activate.bat && py run.py"
+)
 
 echo Waiting for backend to start...
 timeout /t 3 /nobreak >nul

@@ -20,26 +20,30 @@ def get_patients():
     name = request.args.get('name')
     gender = request.args.get('gender')
     clinic_id = request.args.get('clinic_id', type=int)
+    doctor_id = request.args.get('doctor_id', type=int)
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
     
     # Create cache key
-    cache_key = f'patients_{phone}_{name}_{gender}_{clinic_id}_{page}_{per_page}'
+    cache_key = f'patients_{phone}_{name}_{gender}_{clinic_id}_{doctor_id}_{page}_{per_page}'
     
     # Try to get from cache first
     cached_result = cache.get(cache_key)
     if cached_result:
         return jsonify(cached_result), 200
     
-    # Build base query
-    if clinic_id:
-        # Get patients who have visited this clinic
-        from app.models.visit import Visit
-        patient_ids = db.session.query(Visit.patient_id).filter_by(clinic_id=clinic_id).distinct()
-        query = Patient.query.filter(Patient.id.in_(patient_ids))
-    else:
-        query = Patient.query
+    # Build base query - filter by assigned clinic/doctor first
+    query = Patient.query
     
+    # Filter by assigned clinic_id (patient's assigned clinic)
+    if clinic_id:
+        query = query.filter(Patient.clinic_id == clinic_id)
+    
+    # Filter by assigned doctor_id (patient's assigned doctor)
+    if doctor_id:
+        query = query.filter(Patient.doctor_id == doctor_id)
+    
+    # Additional filters
     if phone:
         query = query.filter(Patient.phone.contains(phone))
     if name:
@@ -110,6 +114,30 @@ def create_patient(data, current_user):
     if existing_patient:
         return jsonify({'message': 'Patient with this phone number already exists'}), 400
     
+    # Validate clinic_id and doctor_id if provided
+    clinic_id = data.get('clinic_id')
+    doctor_id = data.get('doctor_id')
+    
+    if clinic_id:
+        from app.models.clinic import Clinic
+        clinic = Clinic.query.get(clinic_id)
+        if not clinic or not clinic.is_active:
+            return jsonify({'message': 'Invalid or inactive clinic'}), 400
+    
+    if doctor_id:
+        from app.models.doctor import Doctor
+        doctor = Doctor.query.get(doctor_id)
+        if not doctor or not doctor.is_active:
+            return jsonify({'message': 'Invalid or inactive doctor'}), 400
+        
+        # If doctor is provided, validate it belongs to the clinic if clinic_id is also provided
+        if clinic_id and doctor.clinic_id != clinic_id:
+            return jsonify({'message': 'Doctor does not belong to the specified clinic'}), 400
+        
+        # If only doctor is provided, assign clinic_id from doctor
+        if not clinic_id and doctor.clinic_id:
+            clinic_id = doctor.clinic_id
+    
     # Create patient
     patient = Patient(
         name=data['name'],
@@ -117,7 +145,9 @@ def create_patient(data, current_user):
         address=data.get('address'),
         age=data.get('age'),
         gender=Gender(data['gender'].lower()) if data.get('gender') else None,
-        medical_history=data.get('medical_history')
+        medical_history=data.get('medical_history'),
+        clinic_id=clinic_id,
+        doctor_id=doctor_id
     )
     
     db.session.add(patient)
@@ -187,6 +217,34 @@ def update_patient(patient_id, current_user):
             return jsonify({'message': 'Invalid gender'}), 400
     if 'medical_history' in data:
         patient.medical_history = data['medical_history']
+    
+    # Update clinic_id and doctor_id if provided
+    if 'clinic_id' in data:
+        clinic_id = data['clinic_id']
+        if clinic_id:
+            from app.models.clinic import Clinic
+            clinic = Clinic.query.get(clinic_id)
+            if not clinic or not clinic.is_active:
+                return jsonify({'message': 'Invalid or inactive clinic'}), 400
+        patient.clinic_id = clinic_id
+    
+    if 'doctor_id' in data:
+        doctor_id = data['doctor_id']
+        if doctor_id:
+            from app.models.doctor import Doctor
+            doctor = Doctor.query.get(doctor_id)
+            if not doctor or not doctor.is_active:
+                return jsonify({'message': 'Invalid or inactive doctor'}), 400
+            
+            # Validate doctor belongs to clinic if clinic_id is set
+            if patient.clinic_id and doctor.clinic_id != patient.clinic_id:
+                return jsonify({'message': 'Doctor does not belong to the patient\'s clinic'}), 400
+            
+            # If clinic_id is not set, assign it from doctor
+            if not patient.clinic_id and doctor.clinic_id:
+                patient.clinic_id = doctor.clinic_id
+        else:
+            patient.doctor_id = None
     
     patient.updated_at = datetime.utcnow()
     db.session.commit()

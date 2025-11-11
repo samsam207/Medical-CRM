@@ -11,10 +11,11 @@ import DoctorQueue from '../components/DoctorQueue'
 import { Users, Clock, CheckCircle, AlertCircle, Stethoscope, Wifi, WifiOff, FileText } from 'lucide-react'
 
 const DoctorDashboard = () => {
-  const { user, token, logout } = useAuthStore()
+  const { user, token, logout, getDoctorId } = useAuthStore()
   const navigate = useNavigate()
   const { socket, isConnected, connectionError, reconnect, onAppointmentCreated, onAppointmentUpdated, onAppointmentCancelled } = useSocket()
   const [activeTab, setActiveTab] = useState('overview')
+  const doctorId = getDoctorId()
   
   // Check for current appointment
   const { data: currentAppointment } = useQuery({
@@ -55,10 +56,10 @@ const DoctorDashboard = () => {
 
   // Set up real-time updates with event batching
   useEffect(() => {
-    if (socket && isConnected && user?.id) {
+    if (socket && isConnected && doctorId) {
       // Join doctor room for real-time updates
       socket.emit('join_doctor_room', { 
-        doctor_id: user.id,
+        doctor_id: doctorId,
         token: token 
       })
 
@@ -104,9 +105,22 @@ const DoctorDashboard = () => {
         debouncedRefetch('payment_processed', data)
       })
 
+      // Listen for current_appointment_available event - auto-navigate to current appointment page
+      const handleCurrentAppointmentAvailable = (data) => {
+        // Check if this is for the current doctor
+        if (data.doctor_user_id && data.doctor_user_id === user.id) {
+          // If navigate flag is set, redirect to current appointment page
+          if (data.navigate && window.location.pathname !== '/doctor/current-appointment') {
+            navigate('/doctor/current-appointment')
+          }
+        }
+      }
+      
+      socket.on('current_appointment_available', handleCurrentAppointmentAvailable)
+
       return () => {
         socket.emit('leave_doctor_room', { 
-          doctor_id: user.id,
+          doctor_id: doctorId,
           token: token 
         })
         socket.off('queue_updated')
@@ -118,9 +132,10 @@ const DoctorDashboard = () => {
         socket.off('patient_created')
         socket.off('patient_updated')
         socket.off('payment_processed')
+        socket.off('current_appointment_available', handleCurrentAppointmentAvailable)
       }
     }
-  }, [socket, isConnected, user?.id, token, debouncedRefetch])
+  }, [socket, isConnected, doctorId, token, debouncedRefetch, navigate])
 
   const handleLogout = () => {
     logout()
@@ -326,7 +341,7 @@ const DoctorDashboard = () => {
         {/* Queue Management Tab */}
         {activeTab === 'queue' && user?.id && (
           <DoctorQueue 
-            doctorId={user.id} 
+            doctorId={doctorId} 
             onQueueUpdate={() => refetch()} 
           />
         )}

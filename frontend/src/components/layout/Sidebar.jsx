@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { 
   Home, Calendar, Users, User, CreditCard, Building2, Settings,
-  ChevronLeft, ChevronRight, Stethoscope, Menu, X
+  ChevronLeft, ChevronRight, Stethoscope, Menu, X, UserCog
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useAuthStore } from '../../stores/authStore'
@@ -25,6 +25,7 @@ const Sidebar = ({ onCollapseChange }) => {
   const { setSidebarCollapsed } = useLayout()
   
   const isDoctor = user?.role === 'doctor'
+  const isAdmin = user?.role === 'admin'
   
   const sidebarItems = [
     { icon: Home, label: 'لوحة التحكم', path: '/reception/dashboard' },
@@ -32,8 +33,11 @@ const Sidebar = ({ onCollapseChange }) => {
     { icon: Users, label: 'إدارة الطوابير', path: '/reception/queue' },
     { icon: User, label: 'المرضى', path: '/reception/patients' },
     { icon: CreditCard, label: 'المدفوعات', path: '/reception/payments' },
-    { icon: Building2, label: 'العيادات والأطباء', path: '/reception/clinics-doctors' },
+    // Hide clinics-doctors page for doctors
+    ...(!isDoctor ? [{ icon: Building2, label: 'العيادات والأطباء', path: '/reception/clinics-doctors' }] : []),
     ...(isDoctor ? [{ icon: Stethoscope, label: 'الموعد الحالي', path: '/doctor/current-appointment' }] : []),
+    // Only admin can see users-management
+    ...(isAdmin ? [{ icon: UserCog, label: 'إدارة المستخدمين', path: '/reception/users-management' }] : []),
     { icon: Settings, label: 'الإعدادات', path: '/reception/settings' },
   ]
 
@@ -44,6 +48,9 @@ const Sidebar = ({ onCollapseChange }) => {
     }
     if (path === '/doctor/current-appointment') {
       return location.pathname === '/doctor/current-appointment'
+    }
+    if (path === '/reception/users-management') {
+      return location.pathname === '/reception/users-management'
     }
     return location.pathname === path
   }

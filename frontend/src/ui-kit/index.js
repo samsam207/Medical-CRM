@@ -49,6 +49,14 @@ export {
   DropdownMenuRadioGroup,
 } from './components/dropdown-menu'
 
+// Tabs Components
+export {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from './components/tabs'
+
 // Design Tokens
 export { default as tokens } from './tokens'
 export * from './tokens'

@@ -3,11 +3,9 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import ProtectedRoute from './components/common/ProtectedRoute'
 import ErrorBoundary from './components/common/ErrorBoundary'
-import SentryErrorBoundary from './components/common/SentryErrorBoundary'
 import AppShell from './components/layout/AppShell'
 import { LayoutProvider } from './contexts/LayoutContext'
 import Spinner from './components/common/Spinner'
-import { initSentry } from './utils/sentry'
 
 // Lazy load pages for code splitting
 const Login = lazy(() => import('./pages/Login'))
@@ -22,6 +20,7 @@ const ReportsPage = lazy(() => import('./pages/ReportsPage'))
 const QueueManagementPage = lazy(() => import('./pages/QueueManagementPage'))
 const ClinicsAndDoctorsPage = lazy(() => import('./pages/ClinicsAndDoctorsPage'))
 const CurrentAppointmentPage = lazy(() => import('./pages/CurrentAppointmentPage'))
+const UsersManagementPage = lazy(() => import('./pages/UsersManagementPage'))
 
 // Loading fallback component
 const PageLoader = () => (
@@ -31,14 +30,8 @@ const PageLoader = () => (
 )
 
 function App() {
-  // Initialize Sentry on app mount
-  React.useEffect(() => {
-    initSentry();
-  }, []);
-  
   return (
-    <SentryErrorBoundary>
-      <ErrorBoundary>
+    <ErrorBoundary>
       <LayoutProvider>
         <div className="min-h-screen bg-gray-50 font-arabic" dir="rtl">
           <Routes>
@@ -143,7 +136,7 @@ function App() {
             <Route 
               path="/reception/clinics-doctors" 
               element={
-                <ProtectedRoute allowedRoles={['receptionist', 'admin', 'doctor']}>
+                <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
                   <AppShell>
                     <Suspense fallback={<PageLoader />}>
                       <ClinicsAndDoctorsPage />
@@ -176,13 +169,24 @@ function App() {
                 </ProtectedRoute>
               } 
             />
+            <Route 
+              path="/reception/users-management" 
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AppShell>
+                    <Suspense fallback={<PageLoader />}>
+                      <UsersManagementPage />
+                    </Suspense>
+                  </AppShell>
+                </ProtectedRoute>
+              } 
+            />
             <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </div>
       </LayoutProvider>
-      </ErrorBoundary>
-    </SentryErrorBoundary>
+    </ErrorBoundary>
   )
 }
 

@@ -83,17 +83,29 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
   const { data: clinics = [] } = useQuery({
     queryKey: ['clinics', 'booking-wizard'],
     queryFn: async () => {
-      const result = await clinicsApi.getClinics();
-      return result?.clinics || [];
+      const result = await clinicsApi.getClinics({ is_active: 'true' });
+      // Filter to only show active clinics for booking
+      return (result?.clinics || []).filter(clinic => clinic.is_active !== false);
     },
     enabled: isOpen
   })
 
-  // Fetch doctors for selected clinic
+  // Fetch doctors for selected clinic (only active doctors for booking)
   const { data: doctors = [] } = useQuery({
-    queryKey: ['doctors', formData.clinic_id],
-    queryFn: () => clinicsApi.getClinicDoctors(parseInt(formData.clinic_id)).then(res => res?.data?.doctors || []),
-    enabled: !!formData.clinic_id && formData.clinic_id !== ''
+    queryKey: ['doctors', formData.clinic_id, 'booking'],
+    queryFn: () => {
+      const clinicId = parseInt(formData.clinic_id)
+      // Validate clinic_id before making API call
+      if (!clinicId || isNaN(clinicId)) {
+        return Promise.resolve([])
+      }
+      return clinicsApi.getClinicDoctors(clinicId, { is_active: 'true' }).then(res => {
+        // Filter to only show active doctors for booking
+        const allDoctors = res?.data?.doctors || []
+        return allDoctors.filter(doctor => doctor.is_active !== false)
+      })
+    },
+    enabled: !!formData.clinic_id && formData.clinic_id !== '' && !isNaN(parseInt(formData.clinic_id))
   })
 
   // Fetch services for selected clinic (only active services for booking)
@@ -207,10 +219,31 @@ const BookingWizard = ({ isOpen, onClose, onSuccess }) => {
 
   const handleCreatePatient = () => {
     // Convert gender to lowercase before sending
+    // Automatically assign clinic and doctor from previous steps
     const patientData = {
       ...newPatientData,
       gender: newPatientData.gender.toLowerCase()
     }
+    
+    // Safely parse clinic_id and doctor_id from formData
+    if (formData.clinic_id && formData.clinic_id !== '') {
+      const clinicId = typeof formData.clinic_id === 'number' 
+        ? formData.clinic_id 
+        : parseInt(formData.clinic_id)
+      if (!isNaN(clinicId)) {
+        patientData.clinic_id = clinicId
+      }
+    }
+    
+    if (formData.doctor_id && formData.doctor_id !== '') {
+      const doctorId = typeof formData.doctor_id === 'number' 
+        ? formData.doctor_id 
+        : parseInt(formData.doctor_id)
+      if (!isNaN(doctorId)) {
+        patientData.doctor_id = doctorId
+      }
+    }
+    
     createPatientMutation.mutate(patientData)
   }
 
